@@ -4,4 +4,5 @@ class TranscribeConfig:
     LANGUAGE = "en" # Základní jazyk pro transkripci
     AUDIO_PATH = "data/audio_files/"
     OUTPUT_PATH = "data/output_files/"
+    HF_TOKEN = "***REMOVED***"
     

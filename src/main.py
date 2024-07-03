@@ -1,47 +1,35 @@
-
 import os
+import torch
 from config.transcribe_config import TranscribeConfig as Config
 from utils.utils import ensure_directory_exists
 from utils.transcribe import transcribe_audio
 from utils.detect_language import detect_language_of_text
+from utils.transcription import write_transcription
+from utils.segmentation import simple_segmentation
 
 
 def main(audio_file, model=Config.WHISPER_MODEL):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
-    ## Ensure the output directory exists
     ensure_directory_exists(Config.OUTPUT_PATH)
 
-    ## Detect the language of the audio file
     language_output = detect_language_of_text(audio_file)
+    print(f"Detected language: {language_output}")
 
-    ## Transcribe the audio file
-    text, segments, language = transcribe_audio(audio_file, model=model)
+    text, segments, language = transcribe_audio(audio_file, model)
+    print(f"Transcription completed. Detected language: {language}")
 
-
-    #Save the transcription to a file
-    output_file = os.path.join(Config.OUTPUT_PATH, os.path.basename(audio_file) + ".txt")
-    with open(output_file, "w") as f:
-        f.write(f"Transcription of {audio_file}\n")
-        f.write(f"Language: {language_output}\n")
-        f.write("\n")
-        for segment in segments:
-            start = segment["start"]
-            end = segment["end"]
-            text = segment["text"]
-            f.write(f"[{start:.2f} - {end:.2f}]: {text}\n")
-
+    output_file = os.path.join(Config.OUTPUT_PATH, f"{os.path.basename(audio_file)}_transcipted.txt")
+    write_transcription(output_file, audio_file, language_output, segments)
 
     print(f"Transcription saved to {output_file}")
 
-
-
-
-# This is the main function that will be called from the command line
 if __name__ == "__main__":
 
     import argparse
 
-    parser = argparse.ArgumentParser(description="Transcribe audio files.")
+    parser = argparse.ArgumentParser(description="Transcribe audio files with simple speaker segmentation.")
     parser.add_argument("audio_file", type=str, help="Path to the audio file.")
     parser.add_argument("--model", type=str, default=Config.WHISPER_MODEL, help="Model to use for transcription.")
     

@@ -1,0 +1,99 @@
+# Model settings
+
+model:
+
+  name: "large-v2"  # Choose between "tiny", "base", "small", "medium", "large-v2"
+
+  language: ""  # Set to "cs" for Czech, or leave empty for automatic detection
+
+
+
+# Whisper AI Configuration
+
+whisper:
+
+  sample_rate: 16000  # Audio sample rate
+
+
+
+# Audio processing
+
+audio:
+
+  chunk_size: 300  # Seconds
+
+
+
+# Performance settings
+
+performance:
+
+  device: "cuda"  # Use "cuda" for GPU or "cpu" for CPU
+
+  num_workers: 2  # Number of worker threads for parallel processing
+
+
+
+# Transcription settings
+
+transcription:
+
+  task: "transcribe"
+
+  temperature: 0
+
+  compression_ratio_threshold: 2.4
+
+  logprob_threshold: -1.0
+
+  no_speech_threshold: 0.6
+
+  fp16: true  # Will be overridden based on CUDA availability
+
+  verbose: false
+
+  multi_language: false
+
+
+
+# Diarization settings
+
+diarization:
+
+  enabled: true
+
+  model: "pyannote/speaker-diarization-3.1"
+
+  auth_token: "***REMOVED***"
+
+  min_duration_off: 0.3
+
+  min_cluster_size: 5
+
+  method: "centroid"
+
+
+
+# Output settings
+
+output:
+
+  format: "txt"  # Default output format (txt, subtitle, or json)
+
+  style: "timestamped"
+
+
+
+# Logging
+
+logging:
+
+  level: "INFO"
+
+  file: "whisper_transcription"  # Base filename, timestamp will be added automatically
+
+  console_level: "INFO"
+
+  file_level: "DEBUG"
+
+  retention_days: 0  # Keep logs for 7 days 

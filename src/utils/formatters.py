@@ -4,7 +4,6 @@ import json
 
 class OutputFormatter:
     def format_timestamp(self, seconds: float) -> str:
-        """Convert seconds to timestamp format HH:MM:SS.mmm"""
         td = timedelta(seconds=seconds)
         hours = int(td.total_seconds() // 3600)
         minutes = int((td.total_seconds() % 3600) // 60)

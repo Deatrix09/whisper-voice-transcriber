@@ -105,7 +105,6 @@ class Pipeline:
         try:
             self.logger.info(f"Starting processing of {audio_path}")
             
-            # Verify file exists and is accessible
             if not os.path.exists(audio_path):
                 raise FileNotFoundError(f"Audio file not found: {audio_path}")
             
@@ -123,7 +122,6 @@ class Pipeline:
             # Log audio properties
             self.logger.info(f"Audio loaded: {waveform.shape}, Sample rate: {sample_rate}")
             
-            # Check CUDA availability
             if torch.cuda.is_available() and self.config.performance.device == "cuda":
                 self.logger.info("CUDA is available and will be used")
             else:

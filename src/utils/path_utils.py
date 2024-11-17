@@ -13,13 +13,10 @@ class PathUtils:
         # Get input filename without extension
         input_filename = os.path.splitext(os.path.basename(input_path))[0]
         
-        # Generate timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
-        # Create output filename
         output_filename = f"{input_filename}_{timestamp}.{output_format}"
         
-        # Construct full path
         output_path = os.path.join(os.getcwd(), 'data', 'output', output_filename)
         
         return output_path

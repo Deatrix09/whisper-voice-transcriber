@@ -20,7 +20,6 @@ class Transcriber:
                 self.logger.error("ffmpeg not found in system PATH")
                 return False
                 
-            # Try to run ffmpeg
             subprocess.run(['ffmpeg', '-version'], 
                          capture_output=True, 
                          check=True)

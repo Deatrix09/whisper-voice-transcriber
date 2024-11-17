@@ -18,7 +18,6 @@ class Diarizer:
                 use_auth_token=self.config.diarization.auth_token
             )
             
-            # Log pipeline parameters
             self.logger.info("Setting pipeline parameters:")
             self.logger.info(f"- Min duration off: {self.config.diarization.min_duration_off}")
             self.logger.info(f"- Min cluster size: {self.config.diarization.min_cluster_size}")
@@ -35,7 +34,6 @@ class Diarizer:
                 }
             })
             
-            # Move to specified device
             if torch.cuda.is_available() and self.config.performance.device == "cuda":
                 self.pipeline = self.pipeline.to(torch.device("cuda"))
                 self.logger.info("Diarization pipeline moved to CUDA")
@@ -60,9 +58,8 @@ class Diarizer:
             self.logger.info("Running diarization pipeline...")
             diarization = self.pipeline(audio_path)
             
-            # Convert results to a more manageable format
             results = []
-            speaker_segments = {}  # Track segments per speaker
+            speaker_segments = {}
             
             for turn, _, speaker in diarization.itertracks(yield_label=True):
                 segment = {
@@ -78,7 +75,6 @@ class Diarizer:
                     speaker_segments[speaker] = []
                 speaker_segments[speaker].append(segment)
             
-            # Log detailed statistics
             self.logger.info("Diarization Results Summary:")
             self.logger.info(f"Total segments: {len(results)}")
             self.logger.info(f"Unique speakers detected: {len(speaker_segments)}")

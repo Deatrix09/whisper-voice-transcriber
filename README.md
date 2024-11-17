@@ -56,8 +56,8 @@ python main.py <path_to_audio_file> [--model MODEL] [--diarization] [--formats F
 
 **Optional:**
 - `--model MODEL`: Specifies the Whisper model to use for transcription.
-  - **Default:** "base"
-  - **Choices:** "tiny", "base", "small", "medium", "large"
+  - **Default:** "large-v2"
+  - **Choices:** "tiny", "base", "small", "medium", "large-v2, large-v3, turbo"
   - **Example:** `--model medium`
 
 - `--diarization`: Enables speaker diarization (speaker identification).
@@ -82,7 +82,7 @@ python main.py data/input/example.mp3 --model medium --diarization --formats txt
 
 ## Configuration
 
-The transcription process uses settings from `config/whisper_config.yaml`. You can modify this file to adjust various parameters of the Whisper model, output format, and chunking size for long recordings.
+The transcription process uses settings from `config/config.yaml`. You can modify this file to adjust various parameters of the Whisper model, output format, and chunking size for long recordings.
 
 ## Note
 

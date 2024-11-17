@@ -2,7 +2,7 @@
 
 model:
 
-  name: "large-v2"  # Choose between "tiny", "base", "small", "medium", "large-v2"
+  name: "large-v3"  # Choose between "tiny", "base", "small", "medium", "large-v2", "large-v3", "turbo"
 
   language: ""  # Set to "cs" for Czech, or leave empty for automatic detection
 

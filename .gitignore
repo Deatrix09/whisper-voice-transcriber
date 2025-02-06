@@ -18,6 +18,7 @@ input/
 
 # Output files
 output/
+algorithm_output/
 
 # Distribution / packaging
 .Python

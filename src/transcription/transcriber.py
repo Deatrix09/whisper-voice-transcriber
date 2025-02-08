@@ -35,25 +35,38 @@ class Transcriber:
     def initialize_model(self):
         """Initialize the Whisper model."""
         try:
-            # Check ffmpeg first
             if not self.check_ffmpeg():
                 raise RuntimeError("ffmpeg is required but not found. Please install ffmpeg and add it to your PATH.")
                 
-            # Set device
-            device = "cuda" if torch.cuda.is_available() and self.config.performance.device == "cuda" else "cpu"
+            # Set device based on availability and config
+            device = "cuda" if (torch.cuda.is_available() and 
+                            self.config.performance.device == "cuda") else "cpu"
             
-            # Load model
-            self.model = whisper.load_model(
-                self.config.model.name,
-                device=device
-            )
-            
-            self.logger.info(f"Successfully loaded Whisper model: {self.config.model.name}")
-            self.logger.info(f"Model device: {device}")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize Whisper model: {str(e)}")
+            # Load model with additional context for loading speed
+            try:
+                self.model = whisper.load_model(
+                    self.config.model.name,
+                    device=device,
+                )
+                
+                self.logger.info(f"Successfully loaded Whisper model: {self.config.model.name}")
+                self.logger.info(f"Model device: {device}")
+                
+                # Verify the loaded language matches config if provided
+                if self.config.model.language and self.model.lang != self.config.model.language:
+                    self.logger.warning(f"loaded language: {self.model.lang}, "
+                                    f"but model language was set to: {self.config.model.language}")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize Whisper model: {str(e)}", exc_info=True)
+                raise
+        except RuntimeError as e:
+            if "language mismatch" in str(e).lower():
+                self.logger.error("The loaded language does not match the configured language. Please ensure both are set correctly.")
+            else:
+                self.logger.error(f"Failed to initialize Whisper model: {str(e)}", exc_info=True)
             raise
+
+
 
     def transcribe(self, audio_path: str) -> Dict:
         """Transcribe audio file using Whisper."""
@@ -82,7 +95,7 @@ class Transcriber:
             # Add language if specified
             if self.config.model.language:
                 options["language"] = self.config.model.language
-                
+            
             # Log transcription options
             self.logger.debug(f"Transcription options: {options}")
                 

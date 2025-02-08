@@ -68,9 +68,9 @@ diarization:
 
   min_duration_off: 0.3
 
-  min_cluster_size: 5
+  min_cluster_size: 15
 
-  method: "centroid"
+  method: "average"
 
 
 
@@ -96,4 +96,4 @@ logging:
 
   file_level: "DEBUG"
 
-  retention_days: 0  # Keep logs for 7 days 
+  retention_days: 1  # Keep logs for 7 days 

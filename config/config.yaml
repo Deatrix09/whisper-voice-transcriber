@@ -48,7 +48,7 @@ transcription:
 
   no_speech_threshold: 0.6
 
-  fp16: true  # Will be overridden based on CUDA availability
+  fp16: false  # Will be overridden based on CUDA availability
 
   verbose: false
 
@@ -71,6 +71,8 @@ diarization:
   min_cluster_size: 15
 
   method: "average"
+
+  num_speakers: 3  # Optional: Set number of speakers (e.g., 2). Leave as null for automatic detection
 
 
 

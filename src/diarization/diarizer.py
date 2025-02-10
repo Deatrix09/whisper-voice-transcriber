@@ -56,7 +56,14 @@ class Diarizer:
             
             # Run diarization
             self.logger.info("Running diarization pipeline...")
-            diarization = self.pipeline(audio_path)
+            
+            # Check if num_speakers is specified in config
+            if hasattr(self.config.diarization, 'num_speakers') and self.config.diarization.num_speakers is not None:
+                self.logger.info(f"Using specified number of speakers: {self.config.diarization.num_speakers}")
+                diarization = self.pipeline(audio_path, num_speakers=self.config.diarization.num_speakers)
+            else:
+                self.logger.info("Using automatic speaker detection")
+                diarization = self.pipeline(audio_path)
             
             results = []
             speaker_segments = {}

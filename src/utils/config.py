@@ -59,6 +59,7 @@ class DiarizationConfig:
     min_duration_off: float
     min_cluster_size: int
     method: str
+    num_speakers: Optional[int] = None
 
 
 

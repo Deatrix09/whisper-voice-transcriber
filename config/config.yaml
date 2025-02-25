@@ -30,7 +30,7 @@ performance:
 
   device: "cuda"  # Use "cuda" for GPU or "cpu" for CPU
 
-  num_workers: 2  # Number of worker threads for parallel processing
+  num_workers: 4  # Number of worker threads for parallel processing
 
 
 
@@ -48,7 +48,7 @@ transcription:
 
   no_speech_threshold: 0.6
 
-  fp16: false  # Will be overridden based on CUDA availability
+  fp16: true  # Will be overridden based on CUDA availability
 
   verbose: false
 
@@ -66,13 +66,13 @@ diarization:
 
   auth_token: "***REMOVED***"
 
-  min_duration_off: 0.3
+  min_duration_off: 0.5
 
-  min_cluster_size: 15
+  min_cluster_size: 5
 
   method: "average"
 
-  num_speakers: 3  # Optional: Set number of speakers (e.g., 2). Leave as null for automatic detection
+  num_speakers: null  # Optional: Set number of speakers (e.g., 2). Leave as null for automatic detection
 
 
 

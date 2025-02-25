@@ -18,6 +18,12 @@ import os
 
 from src.utils.log_cleanup import LogCleanup
 
+import torch
+
+from torch.serialization import add_safe_globals
+from torch.torch_version import TorchVersion
+from pyannote.audio.core.task import Specifications, Problem, Resolution
+
 
 
 def parse_arguments():
@@ -45,6 +51,8 @@ def parse_arguments():
 
 
 def main():
+
+    add_safe_globals([TorchVersion, Specifications, Problem, Resolution])
 
     # Parse command line arguments
     args = parse_arguments()

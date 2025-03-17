@@ -14,9 +14,6 @@ class LevenshteinComparator:
         self.models = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
         
     def levenshtein_distance(self, s1: str, s2: str) -> int:
-        """
-        Calculate the Levenshtein distance between two strings.
-        """
         if len(s1) < len(s2):
             return self.levenshtein_distance(s2, s1)
 
@@ -48,10 +45,6 @@ class LevenshteinComparator:
         return ' '.join([segment['text'].strip() for segment in results])
 
     def calculate_similarity_matrix(self, transcriptions: Dict[str, str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Calculate similarity matrix between all model transcriptions.
-        Returns both raw distances and normalized similarity scores.
-        """
         models = list(transcriptions.keys())
         n_models = len(models)
         
@@ -84,9 +77,6 @@ class LevenshteinComparator:
         return distance_df, similarity_df
 
     def process_audio(self, audio_path: str) -> Dict[str, pd.DataFrame]:
-        """
-        Process audio file with different models and compare results.
-        """
         try:
             self.logger.info(f"Starting Levenshtein comparison for: {audio_path}")
             
@@ -115,11 +105,10 @@ class LevenshteinComparator:
             # Calculate similarity matrices
             distance_matrix, similarity_matrix = self.calculate_similarity_matrix(transcriptions)
             
-            # Prepare results
             results = {
                 'levenshtein_distances': distance_matrix,
                 'similarity_scores': similarity_matrix,
-                'transcriptions': transcriptions  # Include transcriptions in the results
+                'transcriptions': transcriptions 
             }
             
             return results
@@ -129,9 +118,6 @@ class LevenshteinComparator:
             raise
 
     def save_results(self, results: Dict[str, pd.DataFrame], audio_path: str, transcriptions: Dict[str, str]) -> None:
-        """
-        Save comparison results to files.
-        """
         try:
             # Create output directory
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -139,16 +125,13 @@ class LevenshteinComparator:
             output_dir = os.path.join(os.getcwd(), 'data', 'algorithm_output', audio_name, timestamp)
             os.makedirs(output_dir, exist_ok=True)
             
-            # Save matrices to CSV
             for name, df in results.items():
                 output_path = os.path.join(output_dir, f"{name}.csv")
                 df.to_csv(output_path)
                 self.logger.info(f"Saved {name} to: {output_path}")
             
-            # Generate summary report
             self.generate_summary_report(results, output_dir)
             
-            # Add visualization of differences
             self.visualize_differences(transcriptions, output_dir)
             
         except Exception as e:
@@ -156,9 +139,6 @@ class LevenshteinComparator:
             raise
 
     def generate_summary_report(self, results: Dict[str, pd.DataFrame], output_dir: str) -> None:
-        """
-        Generate a summary report of the comparison results.
-        """
         try:
             similarity_scores = results['similarity_scores']
             
@@ -199,7 +179,6 @@ class LevenshteinComparator:
                 f"Podobnost: {min_similarity:.2f}%"
             ])
             
-            # Save summary report
             summary_path = os.path.join(output_dir, "summary_report.txt")
             with open(summary_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(summary))
@@ -211,25 +190,19 @@ class LevenshteinComparator:
             raise 
 
     def visualize_differences(self, transcriptions: Dict[str, str], output_dir: str) -> None:
-        """
-        Vytvoří přehledné porovnání textů s vizuálním zvýrazněním rozdílů.
-        """
         try:
-            # Připravíme výstupní soubor
             output_path = os.path.join(output_dir, "text_comparisons.txt")
             
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write("Porovnání transkripcí mezi modely\n")
                 f.write("================================\n\n")
                 
-                # Pro každý model vypíšeme text a základní statistiky
                 for model, text in transcriptions.items():
                     f.write(f"\n{model.upper()}\n")
                     f.write("-" * len(model) + "\n")
                     f.write(f"Délka textu: {len(text)} znaků\n")
                     f.write(f"Text: {text}\n\n")
                 
-                # Porovnání mezi všemi páry modelů
                 f.write("\nPorovnání rozdílů mezi modely\n")
                 f.write("============================\n\n")
                 

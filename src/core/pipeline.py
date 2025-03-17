@@ -11,7 +11,6 @@ class Pipeline:
         self.config = config
         self.logger = setup_logger(__name__, config.logging.level, config.logging.file)
         
-        # Initialize components
         self.logger.info("Initializing pipeline components...")
         self.audio_processor = AudioProcessor(config)
         self.diarizer = Diarizer(config)
@@ -101,7 +100,6 @@ class Pipeline:
             raise
 
     def process_file(self, audio_path: str) -> List[Dict]:
-        """Process a single audio file through the pipeline."""
         try:
             self.logger.info(f"Starting processing of {audio_path}")
             

@@ -38,7 +38,6 @@ def setup_logger(name: str, level: str, log_file: Optional[str] = None) -> loggi
         
     logger.setLevel(level.upper())
 
-    # Create formatter
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
@@ -52,7 +51,7 @@ def setup_logger(name: str, level: str, log_file: Optional[str] = None) -> loggi
 
     console_handler.setFormatter(formatter)
 
-    console_handler.setLevel(logging.INFO)  # Console shows INFO and above
+    console_handler.setLevel(logging.INFO)
 
     logger.addHandler(console_handler)
 
@@ -71,13 +70,11 @@ def setup_logger(name: str, level: str, log_file: Optional[str] = None) -> loggi
 
         file_handler.setFormatter(formatter)
 
-        file_handler.setLevel(logging.DEBUG)  # File logs everything
+        file_handler.setLevel(logging.DEBUG)
 
         logger.addHandler(file_handler)
 
         
-
-        # Log the initialization
         logger.info(f"Logging initialized. Log file: {log_path}")
 
     

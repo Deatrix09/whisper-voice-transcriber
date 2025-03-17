@@ -10,7 +10,6 @@ class Diarizer:
         self.pipeline = None
         
     def initialize_pipeline(self):
-        """Initialize the pyannote pipeline with authentication."""
         try:
             self.logger.info("Initializing diarization pipeline...")
             self.pipeline = Pipeline.from_pretrained(

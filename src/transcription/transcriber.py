@@ -69,7 +69,6 @@ class Transcriber:
 
 
     def transcribe(self, audio_path: str) -> Dict:
-        """Transcribe audio file using Whisper."""
         try:
             if self.model is None:
                 self.initialize_model()

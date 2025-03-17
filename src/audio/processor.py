@@ -15,7 +15,6 @@ class AudioProcessor:
         self.converted_file_path: Optional[str] = None
         
     def reduce_noise(self, waveform: torch.Tensor, sample_rate: int) -> torch.Tensor:
-        """Apply noise reduction to the audio signal."""
         try:
             self.logger.info("Applying noise reduction...")
             
@@ -38,7 +37,6 @@ class AudioProcessor:
             return waveform
 
     def normalize_audio(self, waveform: torch.Tensor) -> torch.Tensor:
-        """Normalize audio to a consistent volume level."""
         try:
             self.logger.info("Normalizing audio levels...")
             return torch.nn.functional.normalize(waveform, dim=1)
@@ -71,7 +69,6 @@ class AudioProcessor:
             raise
 
     def load_audio(self, file_path: str) -> Tuple[torch.Tensor, int]:
-        """Load and preprocess audio file with enhanced processing."""
         try:
             if file_path.lower().endswith('.m4a'):
                 file_path = self.convert_m4a_to_wav(file_path)
@@ -103,7 +100,6 @@ class AudioProcessor:
             raise
             
     def cleanup(self):
-        """Clean up any temporary converted files."""
         if self.converted_file_path and os.path.exists(self.converted_file_path):
             try:
                 os.remove(self.converted_file_path)

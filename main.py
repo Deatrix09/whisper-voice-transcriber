@@ -52,6 +52,7 @@ def parse_arguments():
 
 def main():
 
+    # Add safe globals for torch serialization for running it on GPU
     add_safe_globals([TorchVersion, Specifications, Problem, Resolution])
 
     # Parse command line arguments
@@ -84,10 +85,8 @@ def main():
 
         
 
-        # Initialize log cleanup
         log_cleanup = LogCleanup(logs_dir, config.logging.retention_days)
 
-        # Cleanup old logs
         log_cleanup.cleanup_old_logs()
 
         

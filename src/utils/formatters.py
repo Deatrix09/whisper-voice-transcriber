@@ -11,7 +11,6 @@ class OutputFormatter:
         return f"{hours:02d}:{minutes:02d}:{seconds:06.3f}"
 
     def to_subtitle_format(self, results: List[Dict]) -> str:
-        """Convert results to subtitle format with timestamps and speakers"""
         output_lines = []
         
         for segment in results:
@@ -25,7 +24,6 @@ class OutputFormatter:
         return "\n".join(output_lines)
 
     def to_plain_text(self, results: List[Dict]) -> str:
-        """Convert results to plain text format with timestamps"""
         output_lines = []
         
         for segment in results:
@@ -39,7 +37,6 @@ class OutputFormatter:
         return "\n".join(output_lines)
 
     def save_output(self, results: List[Dict], output_path: str, output_format: str) -> None:
-        """Save results in the specified format."""
         try:
             with open(output_path, 'w', encoding='utf-8') as f:
                 if output_format == 'json':

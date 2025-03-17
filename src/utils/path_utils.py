@@ -6,10 +6,7 @@ from datetime import datetime
 class PathUtils:
     @staticmethod
     def get_default_output_path(input_path: str, output_format: str = "txt") -> str:
-        """
-        Generate default output path based on input file and format.
-        Returns path like: data/output/filename_YYYYMMDD_HHMMSS.{format}
-        """
+
         # Get input filename without extension
         input_filename = os.path.splitext(os.path.basename(input_path))[0]
         
@@ -23,10 +20,7 @@ class PathUtils:
 
     @staticmethod
     def validate_and_prepare_paths(input_path: str, output_path: str = None, output_format: str = None) -> tuple[str, str]:
-        """
-        Validate input path and prepare output path.
-        Returns absolute paths for both input and output.
-        """
+
         logger = logging.getLogger(__name__)
         
         # Set default format to txt if not specified
@@ -68,7 +62,6 @@ class PathUtils:
 
     @staticmethod
     def ensure_directory_exists(path: str) -> str:
-        """Ensure directory exists and create if it doesn't."""
         directory = Path(path)
         directory.mkdir(parents=True, exist_ok=True)
         return str(directory)

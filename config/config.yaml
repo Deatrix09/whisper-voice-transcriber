@@ -2,7 +2,7 @@
 
 model:
 
-  name: "large-v2"  # Choose between "tiny", "base", "small", "medium", "large-v2", "large-v3", "turbo"
+  name: "large-v3"  # Choose between "tiny", "base", "small", "medium", "large-v2", "large-v3", "turbo"
 
   language: "en"  # Set to "cs" for Czech, or leave empty for automatic detection
 
@@ -17,7 +17,7 @@ whisper:
 
 
 # Audio processing
-
+# Processing for big audio files (e.g., 0,5 hour) is done in chunks
 audio:
 
   chunk_size: 360  # Size in seconds (6 minutes) for chunking large files

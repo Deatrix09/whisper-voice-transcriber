@@ -28,9 +28,14 @@ This project provides a Python script for transcribing audio files using OpenAI'
      ```
 
 3. **PyTorch**:
-   ```
-   pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-   ```
+   - Windows/Linux with CUDA:
+     ```
+     pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+     ```
+   - macOS:
+     ```
+     pip3 install torch torchvision torchaudio
+     ```
 
 4. **Whisper AI**:
    ```

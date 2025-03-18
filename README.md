@@ -52,31 +52,33 @@ Place your audio files in the `data/input/` directory.
 Run the transcription:
 
 ```
-python main.py <path_to_audio_file> [--model MODEL] [--diarization] [--formats FORMAT [FORMAT ...]]
+python main.py --input <path_to_audio_file> [--config <path_to_config>] [--format <format>]
 ```
 
+Default configuration is loaded from the `config/` directory.
 
 ### Parameters
 
 **Required:**
-- `<path_to_audio_file>`: Path to the audio file you want to transcribe.
+- `--input <path_to_audio_file>`: Path to the audio file you want to transcribe.
 
 **Optional:**
-- `--model MODEL`: Specifies the Whisper model to use for transcription.
-  - **Default:** "large-v3"
-  - **Choices:** "tiny", "base", "small", "medium", "large-v2, large-v3, turbo"
-  - **Example:** `--model medium`
+- `--config <path_to_config>`: Path to custom configuration file.
+  - **Default:** "config/config.yaml"
+  - **Example:** `--config my_config.yaml`
 
-- `--formats FORMAT [FORMAT ...]`: Specifies the output formats for the transcription.
-  - **Default:** "txt"
-  - **Choices:** "txt", "json", "srt"
-  - **Example:** `--format txt json srt`
+- `--format <format>`: Specifies the output format for the transcription.
+  - **Default:** Format specified in config.yaml
+  - **Choices:** "txt", "json", "subtitle"
+  - **Example:** `--format json`
 
 ### Example
 
 ```
-python main.py data/input/example.mp3 --model medium--format txt json srt
+python main.py --input data/input/example.mp3 --format txt
 ```
+
+To use a different Whisper model, edit the `model.name` setting in `config/config.yaml`.
 
 ## Output
 

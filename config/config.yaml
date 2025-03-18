@@ -4,7 +4,7 @@ model:
 
   name: "large-v2"  # Choose between "tiny", "base", "small", "medium", "large-v2", "large-v3", "turbo"
 
-  language: ""  # Set to "cs" for Czech, or leave empty for automatic detection
+  language: "en"  # Set to "cs" for Czech, or leave empty for automatic detection
 
 
 
@@ -20,7 +20,9 @@ whisper:
 
 audio:
 
-  chunk_size: 300  # Seconds
+  chunk_size: 360  # Size in seconds (6 minutes) for chunking large files
+  chunk_threshold_mb: 15  # Files larger than this size (in MB) will be chunked
+  chunk_overlap_sec: 5  # Overlap between chunks in seconds
 
 
 

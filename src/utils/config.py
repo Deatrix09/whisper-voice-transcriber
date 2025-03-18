@@ -25,6 +25,8 @@ class WhisperConfig:
 class AudioConfig:
 
     chunk_size: int
+    chunk_threshold_mb: int
+    chunk_overlap_sec: int
 
 
 

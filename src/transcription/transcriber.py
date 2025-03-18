@@ -52,10 +52,10 @@ class Transcriber:
                 self.logger.info(f"Successfully loaded Whisper model: {self.config.model.name}")
                 self.logger.info(f"Model device: {device}")
                 
-                # Verify the loaded language matches config if provided
-                if self.config.model.language and self.model.lang != self.config.model.language:
-                    self.logger.warning(f"loaded language: {self.model.lang}, "
-                                    f"but model language was set to: {self.config.model.language}")
+                # Language will be specified during transcription instead
+                if self.config.model.language:
+                    self.logger.info(f"Model language set to: {self.config.model.language}")
+                    
             except Exception as e:
                 self.logger.error(f"Failed to initialize Whisper model: {str(e)}", exc_info=True)
                 raise
@@ -65,8 +65,6 @@ class Transcriber:
             else:
                 self.logger.error(f"Failed to initialize Whisper model: {str(e)}", exc_info=True)
             raise
-
-
 
     def transcribe(self, audio_path: str) -> Dict:
         try:
@@ -97,17 +95,44 @@ class Transcriber:
             
             # Log transcription options
             self.logger.debug(f"Transcription options: {options}")
+            
+            # Create an instance of AudioProcessor
+            from src.audio.processor import AudioProcessor
+            audio_processor = AudioProcessor(self.config)
+            
+            # Split the audio file into chunks if necessary
+            chunk_files = audio_processor.split_audio_file(abs_audio_path)
+            
+            if len(chunk_files) == 1:
+                # Perform transcription on the single file
+                self.logger.info("Starting transcription...")
+                result = self.model.transcribe(
+                    chunk_files[0],
+                    **options
+                )
+            else:
+                # Process each chunk and merge results
+                self.logger.info(f"Processing {len(chunk_files)} audio chunks...")
+                chunk_results = []
                 
-            # Perform transcription
-            self.logger.info("Starting transcription...")
-            result = self.model.transcribe(
-                abs_audio_path,
-                **options
-            )
+                for i, chunk_file in enumerate(chunk_files):
+                    self.logger.info(f"Transcribing chunk {i+1}/{len(chunk_files)}: {os.path.basename(chunk_file)}")
+                    chunk_result = self.model.transcribe(
+                        chunk_file,
+                        **options
+                    )
+                    chunk_results.append(chunk_result)
+                
+                # Merge results from all chunks
+                self.logger.info("Merging results from all chunks...")
+                result = audio_processor.merge_transcription_results(chunk_results)
+            
+            # Clean up temporary files
+            audio_processor.cleanup()
             
             self.logger.info(f"Successfully transcribed audio file: {abs_audio_path}")
             return result
             
         except Exception as e:
             self.logger.error(f"Transcription failed: {str(e)}", exc_info=True)
-            raise 
+            raise

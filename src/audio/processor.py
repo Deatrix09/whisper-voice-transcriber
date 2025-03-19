@@ -70,10 +70,12 @@ class AudioProcessor:
             self.logger.error(f"Failed to convert M4A to WAV: {str(e)}")
             raise
 
-    def load_audio(self, file_path: str) -> Tuple[torch.Tensor, int]:
+    def load_audio(self, file_path: str) -> Tuple[torch.Tensor, int, Optional[str]]:
         try:
+            converted_path = None
             if file_path.lower().endswith('.m4a'):
-                file_path = self.convert_m4a_to_wav(file_path)
+                converted_path = self.convert_m4a_to_wav(file_path)
+                file_path = converted_path
             
             # Load audio file
             waveform, sample_rate = torchaudio.load(file_path)
@@ -95,7 +97,7 @@ class AudioProcessor:
                 waveform = resampler(waveform)
             
             self.logger.info(f"Successfully loaded and preprocessed audio file: {file_path}")
-            return waveform, self.config.whisper.sample_rate
+            return waveform, self.config.whisper.sample_rate, converted_path
             
         except Exception as e:
             self.logger.error(f"Error loading audio file: {str(e)}")

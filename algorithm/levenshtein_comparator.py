@@ -80,6 +80,16 @@ class LevenshteinComparator:
         try:
             self.logger.info(f"Starting Levenshtein comparison for: {audio_path}")
             
+            # Check if audio is M4A and convert once
+            from src.audio.processor import AudioProcessor
+            temp_processor = AudioProcessor(self.config)
+            if audio_path.lower().endswith('.m4a'):
+                self.logger.info(f"Converting M4A file once for all models")
+                _, _, converted_path = temp_processor.load_audio(audio_path)
+                if converted_path:
+                    audio_path = converted_path
+                    self.logger.info(f"Using converted WAV file: {audio_path}")
+            
             # Store transcriptions for each model
             transcriptions = {}
             
@@ -101,6 +111,9 @@ class LevenshteinComparator:
                 transcriptions[model] = text
                 
                 self.logger.info(f"Completed processing with {model}")
+            
+            # Clean up temporary files
+            temp_processor.cleanup()
             
             # Calculate similarity matrices
             distance_matrix, similarity_matrix = self.calculate_similarity_matrix(transcriptions)

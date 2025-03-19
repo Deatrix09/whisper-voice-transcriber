@@ -115,7 +115,12 @@ class Pipeline:
             
             # Load and preprocess audio
             self.logger.info("Loading and preprocessing audio...")
-            waveform, sample_rate = self.audio_processor.load_audio(audio_path)
+            waveform, sample_rate, converted_path = self.audio_processor.load_audio(audio_path)
+            
+            # Use converted path if available
+            if converted_path:
+                self.logger.info(f"Using converted WAV file: {converted_path}")
+                audio_path = converted_path
             
             # Log audio properties
             self.logger.info(f"Audio loaded: {waveform.shape}, Sample rate: {sample_rate}")

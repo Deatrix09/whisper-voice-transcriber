@@ -16,6 +16,9 @@ myenv/
 # Input files
 input/
 
+#docs
+/docs/
+
 # Output files
 output/
 algorithm_output/

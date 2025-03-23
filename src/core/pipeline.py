@@ -31,9 +31,20 @@ class Pipeline:
             unmatched_segments = 0
             multiple_speakers = 0
             
+            # Process segments in sequential order
+            prev_segment_text = None
+            
             for segment in transcription_result["segments"]:
                 segment_start = segment["start"]
                 segment_end = segment["end"]
+                segment_text = segment["text"].strip()
+                
+                # Skip near-duplicate segments
+                if prev_segment_text and self._is_similar_text(segment_text, prev_segment_text):
+                    self.logger.debug(f"Skipping duplicate segment text: '{segment_text}'")
+                    continue
+                
+                prev_segment_text = segment_text
                 
                 # Find matching speakers
                 matching_speakers = [
@@ -58,11 +69,20 @@ class Pipeline:
                 else:
                     speaker = matching_speakers[0]
                 
+                # Skip empty or very short segments (less than 0.5 seconds with no useful content)
+                if not segment_text or (segment_end - segment_start < 0.5 and len(segment_text.split()) <= 1):
+                    continue
+                    
+                # Skip segments with repetitive content
+                if self._is_repetitive_content(segment_text):
+                    self.logger.debug(f"Skipping repetitive segment: '{segment_text}'")
+                    continue
+                    
                 merged_results.append({
                     "start": segment_start,
                     "end": segment_end,
                     "speaker": speaker,
-                    "text": segment["text"].strip(),
+                    "text": segment_text,
                     "duration": segment_end - segment_start
                 })
             
@@ -98,6 +118,60 @@ class Pipeline:
         except Exception as e:
             self.logger.error(f"Error merging results: {str(e)}")
             raise
+            
+    def _is_similar_text(self, text1: str, text2: str) -> bool:
+        """Check if two text segments are similar enough to be considered duplicates."""
+        text1 = text1.lower().strip()
+        text2 = text2.lower().strip()
+        
+        # If either text is very short, use direct comparison
+        if len(text1) < 10 or len(text2) < 10:
+            return text1 == text2
+            
+        # If texts are identical, they're obviously duplicates
+        if text1 == text2:
+            return True
+            
+        # Check for significant overlap (more than 70% of shorter text)
+        words1 = set(text1.split())
+        words2 = set(text2.split())
+        
+        overlap = words1.intersection(words2)
+        shorter_len = min(len(words1), len(words2))
+        
+        if shorter_len == 0:
+            return False
+        
+        overlap_ratio = len(overlap) / shorter_len
+        return overlap_ratio > 0.7
+
+    def _is_repetitive_content(self, text: str) -> bool:
+        """Check if a segment contains repetitive content that should be filtered out."""
+        text = text.lower().strip()
+        
+        # If text is very short, don't consider it repetitive
+        if len(text) < 10:
+            return False
+            
+        # Check for repeated phrases
+        words = text.split()
+        if len(words) <= 1:
+            return False
+            
+        # Check if the same phrase is repeated multiple times
+        if len(set(words)) == 1:
+            return True
+            
+        # Check for repeating patterns
+        # Example: "I am a native, I am a native, I am a native"
+        for phrase_length in range(2, min(5, len(words) // 2 + 1)):
+            for start in range(0, len(words) - phrase_length * 2 + 1):
+                phrase1 = " ".join(words[start:start + phrase_length])
+                phrase2 = " ".join(words[start + phrase_length:start + phrase_length * 2])
+                if phrase1 == phrase2:
+                    return True
+                    
+        return False
 
     def process_file(self, audio_path: str) -> List[Dict]:
         try:

@@ -22,7 +22,7 @@ audio:
 
   chunk_size: 360  # Size in seconds (6 minutes) for chunking large files
   chunk_threshold_mb: 20  # Files larger than this size (in MB) will be chunked
-  chunk_overlap_sec: 4  # Overlap between chunks in seconds
+  chunk_overlap_sec: 0  # Overlap between chunks in seconds
 
 
 
@@ -40,7 +40,7 @@ performance:
 
 transcription:
 
-  task: "transcribe"
+  task: "translate"
 
   temperature: 0
 

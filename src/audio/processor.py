@@ -115,7 +115,8 @@ class AudioProcessor:
             file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
             
             # Get thresholds from config or use defaults
-            threshold_mb = getattr(self.config.audio, 'chunk_threshold_mb', 15)
+            threshold_mb = self.config.audio.chunk_threshold_mb
+            self.logger.info(f"Using chunk threshold: {threshold_mb} MB")
             
             # If file is smaller than threshold, don't split
             if file_size_mb < threshold_mb:
@@ -134,7 +135,8 @@ class AudioProcessor:
             
             # Get chunk size from config (in seconds)
             chunk_size = self.config.audio.chunk_size
-            chunk_overlap = getattr(self.config.audio, 'chunk_overlap_sec', 5)
+            chunk_overlap = self.config.audio.chunk_overlap_sec
+            self.logger.info(f"Using chunk size: {chunk_size} seconds, overlap: {chunk_overlap} seconds")
             
             # Calculate number of chunks
             num_chunks = int(np.ceil(duration / chunk_size))
@@ -200,7 +202,10 @@ class AudioProcessor:
             
             # Offset for each chunk (in seconds)
             chunk_size = self.config.audio.chunk_size
-            chunk_overlap = getattr(self.config.audio, 'chunk_overlap_sec', 5)
+            chunk_overlap = getattr(self.config.audio, 'chunk_overlap_sec', 2)
+            
+            # Keep track of last segment's text from previous chunk for duplicate detection
+            last_segments_texts = []
             
             # Process each chunk's results
             for i, chunk_result in enumerate(results_list):
@@ -211,25 +216,45 @@ class AudioProcessor:
                 if i > 0:
                     time_offset -= chunk_overlap
                 
+                # Get segments from this chunk
+                chunk_segments = chunk_result.get("segments", [])
+                
                 # Process segments
-                for segment in chunk_result.get("segments", []):
+                for segment in chunk_segments:
                     # Adjust timestamps
                     adjusted_segment = segment.copy()
                     adjusted_segment["start"] += time_offset
                     adjusted_segment["end"] += time_offset
                     
-                    # Don't include segments that are entirely in the overlap region
-                    # with the previous chunk (only for chunks after the first one)
+                    # Skip segments that are completely in the overlap region (only for chunks after the first)
                     if i > 0 and adjusted_segment["end"] <= time_offset + chunk_overlap:
                         continue
                     
-                    merged_result["segments"].append(adjusted_segment)
+                    # Check for duplicate text content (from overlap regions)
+                    segment_text = adjusted_segment["text"].strip()
+                    is_duplicate = False
+                    
+                    # Check against recent segments to detect duplicates
+                    for prev_text in last_segments_texts:
+                        if self._is_similar_text(segment_text, prev_text):
+                            is_duplicate = True
+                            self.logger.debug(f"Skipping duplicate segment: '{segment_text}'")
+                            break
+                    
+                    # If not a duplicate, add to merged result
+                    if not is_duplicate:
+                        merged_result["segments"].append(adjusted_segment)
+                        # Keep track of this segment's text for duplicate detection
+                        last_segments_texts.append(segment_text)
+                        # Only keep last N segments for comparison to avoid performance issues
+                        if len(last_segments_texts) > 5:
+                            last_segments_texts.pop(0)
             
             # Sort segments by start time
             merged_result["segments"].sort(key=lambda x: x["start"])
             
             # Rebuild the complete transcript
-            merged_result["text"] = " ".join(s["text"] for s in merged_result["segments"])
+            merged_result["text"] = " ".join(s["text"].strip() for s in merged_result["segments"])
             
             self.logger.info(f"Successfully merged results: {len(merged_result['segments'])} segments")
             return merged_result
@@ -237,7 +262,36 @@ class AudioProcessor:
         except Exception as e:
             self.logger.error(f"Error merging transcription results: {str(e)}")
             raise
+
+    def _is_similar_text(self, text1, text2):
+        """
+        Check if two text segments are similar enough to be considered duplicates.
+        Uses simple overlap-based detection.
+        """
+        text1 = text1.lower().strip()
+        text2 = text2.lower().strip()
+        
+        # If either text is very short, use direct comparison
+        if len(text1) < 10 or len(text2) < 10:
+            return text1 == text2
             
+        # If texts are identical, they're obviously duplicates
+        if text1 == text2:
+            return True
+            
+        # Check for significant overlap (more than 70% of shorter text)
+        words1 = set(text1.split())
+        words2 = set(text2.split())
+        
+        overlap = words1.intersection(words2)
+        shorter_len = min(len(words1), len(words2))
+        
+        if shorter_len == 0:
+            return False
+        
+        overlap_ratio = len(overlap) / shorter_len
+        return overlap_ratio > 0.7
+
     def cleanup(self):
         # Clean up converted file
         if self.converted_file_path and os.path.exists(self.converted_file_path):

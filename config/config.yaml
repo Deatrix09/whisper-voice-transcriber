@@ -1,103 +1,74 @@
 # Model settings
-
 model:
-
   name: "large-v2"  # Choose between "tiny", "base", "small", "medium", "large-v2", "large-v3", "turbo"
-
   language: ""  # Set to "cs" for Czech, or leave empty for automatic detection
 
-
-
 # Whisper AI Configuration
-
 whisper:
-
   sample_rate: 16000  # Audio sample rate
-
-
 
 # Audio processing
 # Processing for big audio files (e.g., 0,5 hour) is done in chunks
 audio:
-
   chunk_size: 360  # Size in seconds (6 minutes) for chunking large files
   chunk_threshold_mb: 20  # Files larger than this size (in MB) will be chunked
   chunk_overlap_sec: 0  # Overlap between chunks in seconds
 
-
-
 # Performance settings
-
 performance:
-
   device: "cuda"  # Use "cuda" for GPU or "cpu" for CPU
-
   num_workers: 4  # Number of worker threads for parallel processing
 
-
-
 # Transcription settings
-
 transcription:
-
   task: "translate"
-
   temperature: 0
-
   compression_ratio_threshold: 2.4
-
   logprob_threshold: -1.0
-
   no_speech_threshold: 0.6
-
   fp16: true  # Will be overridden based on CUDA availability
-
   verbose: false
-
   multi_language: false
 
-
-
 # Diarization settings
-
 diarization:
-
   enabled: true
-
-  model: "pyannote/speaker-diarization-3.1"
-
-  auth_token: "***REMOVED***"
-
-  min_duration_off: 0.5
-
-  min_cluster_size: 5
-
-  method: "average"
-
+  module: "pyannote"  # Choose between "pyannote" or "nemo"
   num_speakers: null  # Optional: Set number of speakers (e.g., 2). Leave as null for automatic detection
 
+  pyannote:
+    enabled: true
+    model: "pyannote/speaker-diarization-3.1"
+    auth_token: "***REMOVED***"
+    min_duration_off: 0.5
+    min_cluster_size: 5
+    method: "average"
 
+  nemo:
+    enabled: true
+    vad_model: "vad_multilingual_marblenet"
+    speaker_model: "titanet_large"
+    msdd_model: null
+    clustering_params:
+      method: "sc"
+      min_samples: 2
+      oracle_num_speakers: false
+      max_num_speakers: 8
+      enhanced_count_thres: 80
+    vad_params:
+      threshold: 0.5
+      window_length_in_sec: 0.15
+      shift_length_in_sec: 0.01
 
 # Output settings
-
 output:
-
   format: "txt"  # Default output format (txt, subtitle, or json)
-
   style: "timestamped"
 
-
-
 # Logging
-
 logging:
-
   level: "INFO"
-
   file: "whisper_transcription"  # Base filename, timestamp will be added automatically
-
   console_level: "INFO"
-
   file_level: "DEBUG"
-
-  retention_days: 1  # Keep logs for 7 days 
+  retention_days: 1  # Keep logs for 7 days

@@ -1,0 +1,2 @@
+omegaconf>=2.3.0
+gradio>=3.0.0

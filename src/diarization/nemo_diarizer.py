@@ -44,13 +44,13 @@ class NemoDiarizer(BaseDiarizer):
 
     def process(self, audio_path: str) -> List[Dict[str, any]]:
         """Process audio file using NeMo diarization pipeline exactly like diarize_audio.py"""
+        import nemo.collections.asr as nemo_asr
+        from omegaconf import OmegaConf
+        import tempfile
+        
+        self.logger.info(f"Processing audio file for diarization: {audio_path}")
+        
         try:
-            import nemo.collections.asr as nemo_asr
-            from omegaconf import OmegaConf
-            import tempfile
-            
-            self.logger.info(f"Processing audio file for diarization: {audio_path}")
-            
             # Create a temporary directory for manifest files
             temp_dir = tempfile.mkdtemp()
             self.logger.info(f"Created temporary directory: {temp_dir}")
@@ -196,94 +196,181 @@ class NemoDiarizer(BaseDiarizer):
             self.logger.info("Initializing NeMo Neural Diarizer...")
             diarizer = nemo_asr.models.NeuralDiarizer(cfg=diarizer_config)
             
-            # Run diarization
-            self.logger.info("Running diarization...")
-            diarizer.diarize()
+            try:
+                # Run diarization
+                self.logger.info("Running diarization...")
+                diarizer.diarize()
+                self.logger.info("Diarization completed successfully")
+            except Exception as e:
+                self.logger.error(f"Error during diarizer.diarize(): {str(e)}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+                # Continue with the rest of the function to try to use any output files that might have been created
             
             # Process results from RTTM file
             # NeMo creates RTTM files in the pred_rttms subdirectory with the processed filename
             base_filename = os.path.splitext(os.path.basename(preprocessed_audio_file))[0]
+            audio_basename = os.path.splitext(os.path.basename(audio_path))[0]
             
-            # Try to find RTTM file in both possible locations
-            rttm_file = os.path.join(output_dir, 'pred_rttms', f"{base_filename}_processed.rttm")
+            self.logger.info(f"Base filename: {base_filename}")
+            self.logger.info(f"Audio basename: {audio_basename}")
+            
+            # Check for RTTM files with various possible naming patterns
+            possible_rttm_files = [
+                # Most likely pattern based on observed files
+                os.path.join(output_dir, 'pred_rttms', f"{audio_basename}_processed.rttm"),
+                
+                # Other possible patterns
+                os.path.join(output_dir, 'pred_rttms', f"{base_filename}.rttm"),
+                os.path.join(output_dir, 'pred_rttms', f"{base_filename}_processed.rttm"),
+                os.path.join(output_dir, 'pred_rttms', f"{audio_basename}.rttm")
+            ]
+            
+            # Also check for any RTTM files in the directory
+            pred_rttms_dir = os.path.join(output_dir, 'pred_rttms')
+            if os.path.exists(pred_rttms_dir):
+                self.logger.info(f"Contents of {pred_rttms_dir}:")
+                for file in os.listdir(pred_rttms_dir):
+                    self.logger.info(f"  - {file}")
+                    if file.endswith('.rttm'):
+                        possible_rttm_files.append(os.path.join(pred_rttms_dir, file))
+            
+            rttm_file = None
+            for possible_file in possible_rttm_files:
+                self.logger.info(f"Checking for RTTM file at: {possible_file}")
+                if os.path.exists(possible_file):
+                    rttm_file = possible_file
+                    self.logger.info(f"Found RTTM file: {rttm_file}")
+                    break
+            
+            # If we found an RTTM file, parse it
+            if rttm_file:
+                try:
+                    segments = []
+                    with open(rttm_file, 'r') as f:
+                        for line in f:
+                            parts = line.strip().split()
+                            if len(parts) >= 8:
+                                start_time = float(parts[3])
+                                duration = float(parts[4])
+                                end_time = start_time + duration
+                                speaker = parts[7]
+                                
+                                segments.append({
+                                    "start": start_time,
+                                    "end": end_time,
+                                    "speaker": speaker.upper(),  # Convert to uppercase to match format
+                                    "duration": duration
+                                })
+                    
+                    # If we found segments in the RTTM file, consolidate them and return
+                    if segments:
+                        self.logger.info(f"Parsed {len(segments)} segments from RTTM file")
+                        consolidated_segments = self._consolidate_segments(segments)
+                        self.logger.info(f"Consolidated to {len(consolidated_segments)} segments")
+                        return consolidated_segments
+                except Exception as e:
+                    self.logger.error(f"Error parsing RTTM file: {str(e)}")
+                    import traceback
+                    self.logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # If we didn't find an RTTM file or it had no segments, check the speaker_outputs directory
+            self.logger.warning("No valid RTTM file found or it contained no segments")
+            
+            # Try to use the cluster label file as a backup
             cluster_label_file = os.path.join(output_dir, 'speaker_outputs', 'subsegments_scale0_cluster.label')
+            subsegments_file = os.path.join(output_dir, 'speaker_outputs', 'subsegments_scale0.json')
             
-            self.logger.info(f"Checking for diarization results at: {rttm_file}")
-            self.logger.info(f"Alternative location: {cluster_label_file}")
-            
-            # First try to use the RTTM file
-            if os.path.exists(rttm_file):
-                self.logger.info(f"Using RTTM file: {rttm_file}")
-                segments = []
-                with open(rttm_file, 'r') as f:
-                    for line in f:
-                        parts = line.strip().split()
-                        if len(parts) >= 8:
-                            start_time = float(parts[3])
-                            duration = float(parts[4])
-                            end_time = start_time + duration
-                            speaker = parts[7]
-                            
-                            segments.append({
-                                "start": start_time,
-                                "end": end_time,
-                                "speaker": speaker.upper(),  # Convert to uppercase to match format in diarize_audio.py
-                                "duration": duration
-                            })
-            # If RTTM file doesn't exist, try using the cluster label file
-            elif os.path.exists(cluster_label_file):
-                self.logger.info(f"Using cluster label file: {cluster_label_file}")
-                segments = []
-                
-                # Also need to load the subsegments file to get timestamps
-                subsegments_file = os.path.join(output_dir, 'speaker_outputs', 'subsegments_scale0.json')
-                if not os.path.exists(subsegments_file):
-                    self.logger.error(f"Subsegments file not found: {subsegments_file}")
-                    return self._fallback_simple_diarization(audio_path)
-                
-                # Load subsegments to get timestamps
-                import json
-                with open(subsegments_file, 'r') as f:
-                    subsegments = json.load(f)
-                
-                # Load cluster labels
-                with open(cluster_label_file, 'r') as f:
-                    cluster_labels = f.readlines()
-                
-                # Process each segment with its label
-                for i, (subsegment, label_line) in enumerate(zip(subsegments, cluster_labels)):
-                    if 'start' in subsegment and 'end' in subsegment:
-                        start_time = float(subsegment['start'])
-                        end_time = float(subsegment['end'])
-                        duration = end_time - start_time
-                        speaker = label_line.strip()
+            if os.path.exists(cluster_label_file) and os.path.exists(subsegments_file):
+                try:
+                    self.logger.info(f"Using cluster label file: {cluster_label_file}")
+                    segments = []
+                    
+                    # Load subsegments to get timestamps
+                    import json
+                    with open(subsegments_file, 'r') as f:
+                        subsegments = json.load(f)
+                    
+                    # Load cluster labels
+                    with open(cluster_label_file, 'r') as f:
+                        cluster_labels = f.readlines()
+                    
+                    # Process each segment with its label
+                    if len(subsegments) == len(cluster_labels):
+                        for i, (subsegment, label_line) in enumerate(zip(subsegments, cluster_labels)):
+                            if 'start' in subsegment and 'end' in subsegment:
+                                start_time = float(subsegment['start'])
+                                end_time = float(subsegment['end'])
+                                duration = end_time - start_time
+                                speaker = label_line.strip()
+                                
+                                segments.append({
+                                    "start": start_time,
+                                    "end": end_time,
+                                    "speaker": f"SPEAKER_{speaker}",  # Format speaker ID
+                                    "duration": duration
+                                })
                         
-                        segments.append({
-                            "start": start_time,
-                            "end": end_time,
-                            "speaker": f"SPEAKER_{speaker}",  # Format speaker ID
-                            "duration": duration
-                        })
+                        # If we found segments, consolidate them and return
+                        if segments:
+                            self.logger.info(f"Parsed {len(segments)} segments from cluster labels")
+                            consolidated_segments = self._consolidate_segments(segments)
+                            self.logger.info(f"Consolidated to {len(consolidated_segments)} segments")
+                            return consolidated_segments
+                    else:
+                        self.logger.warning(f"Mismatch between subsegments ({len(subsegments)}) and cluster labels ({len(cluster_labels)})")
+                except Exception as e:
+                    self.logger.error(f"Error processing cluster labels: {str(e)}")
+                    import traceback
+                    self.logger.error(f"Traceback: {traceback.format_exc()}")
             else:
-                self.logger.error(f"Neither RTTM file nor cluster label file found")
-                return self._fallback_simple_diarization(audio_path)
+                if not os.path.exists(cluster_label_file):
+                    self.logger.warning(f"Cluster label file not found: {cluster_label_file}")
+                if not os.path.exists(subsegments_file):
+                    self.logger.warning(f"Subsegments file not found: {subsegments_file}")
             
-            # If no segments were found, use fallback
-            if not segments:
-                self.logger.warning("No segments found in diarization results, using fallback diarization")
-                return self._fallback_simple_diarization(audio_path)
+            # If we reach here, we couldn't find any valid diarization results
+            self.logger.error("Could not find any valid diarization results")
             
-            # Consolidate segments for the same speaker that are close together
-            consolidated_segments = self._consolidate_segments(segments)
+            # Create a single segment for the entire audio as a last resort
+            try:
+                import soundfile as sf
+                info = sf.info(audio_path)
+                duration = info.duration
+            except Exception as e:
+                self.logger.error(f"Error getting audio duration: {str(e)}")
+                # If we can't determine the duration, use a default value
+                duration = 60.0
             
-            self.logger.info(f"Processed {len(consolidated_segments)} segments from diarization results")
-            return consolidated_segments
+            self.logger.warning(f"Creating a single segment for the entire audio ({duration:.2f} seconds)")
+            return [{
+                "start": 0.0,
+                "end": duration,
+                "speaker": "SPEAKER_0",
+                "duration": duration
+            }]
             
         except Exception as e:
-            self.logger.error(f"Diarization failed: {str(e)}")
+            self.logger.error(f"Diarization process failed: {str(e)}")
             import traceback
-            traceback.print_exc()
-            return self._fallback_simple_diarization(audio_path)
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Create a single segment for the entire audio as a last resort
+            try:
+                import soundfile as sf
+                info = sf.info(audio_path)
+                duration = info.duration
+            except:
+                # If we can't determine the duration, use a default value
+                duration = 60.0
+            
+            self.logger.warning(f"Creating a single segment for the entire audio ({duration:.2f} seconds)")
+            return [{
+                "start": 0.0,
+                "end": duration,
+                "speaker": "SPEAKER_0",
+                "duration": duration
+            }]
     
     def _consolidate_segments(self, segments: List[Dict[str, any]], gap_threshold: float = 0.5) -> List[Dict[str, any]]:
         """

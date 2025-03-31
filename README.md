@@ -93,7 +93,40 @@ To use a different Whisper model, edit the `model.name` setting in `config/confi
 
 The transcription process uses settings from `config/config.yaml`. You can modify this file to adjust various parameters of the Whisper model, output format, and chunking size for long recordings.
 
+### Speaker Diarization
 
+This project supports two different speaker diarization modules:
+
+1. **Pyannote.audio**: The default diarization module, which provides good speaker separation for most audio files.
+2. **NeMo**: An alternative diarization module from NVIDIA that can provide better results in some scenarios.
+
+To switch between diarization modules, edit the `config/config.yaml` file:
+
+```yaml
+diarization:
+  enabled: true
+  module: "pyannote"  # Choose between "pyannote" or "nemo"
+  num_speakers: null  # Optional: Set number of speakers (e.g., 2). Leave as null for automatic detection
+```
+
+#### Pyannote.audio
+- Requires a Hugging Face account and API token
+- Generally faster processing
+- Works well for most audio files
+
+#### NeMo
+- Requires more computational resources
+- May provide better results for complex audio with multiple speakers
+- Creates detailed RTTM files in the output directory
+
+You can also specify the number of speakers if known in advance, which can improve diarization accuracy:
+
+```yaml
+diarization:
+  enabled: true
+  module: "pyannote"
+  num_speakers: 2  # Set to the exact number of speakers in your audio
+```
 
 # Model Comparison Tool
 

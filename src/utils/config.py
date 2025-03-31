@@ -53,7 +53,7 @@ class TranscriptionConfig:
 
 
 @dataclass
-class DiarizationConfig:
+class PyAnnoteConfig:
 
     enabled: bool
     model: str
@@ -61,7 +61,29 @@ class DiarizationConfig:
     min_duration_off: float
     min_cluster_size: int
     method: str
+
+
+
+@dataclass
+class NemoConfig:
+
+    enabled: bool
+    vad_model: str
+    speaker_model: str
+    msdd_model: Optional[str] = None
+    clustering_params: Optional[Dict[str, Any]] = None
+    vad_params: Optional[Dict[str, Any]] = None
+
+
+
+@dataclass
+class DiarizationConfig:
+
+    enabled: bool
+    module: str  # "pyannote" or "nemo"
     num_speakers: Optional[int] = None
+    pyannote: Optional[PyAnnoteConfig] = None
+    nemo: Optional[NemoConfig] = None
 
 
 
@@ -105,7 +127,12 @@ class AppConfig:
         with open(path, 'r') as f:
             config_dict = yaml.safe_load(f)
 
-            
+        # Convert nested diarization configs
+        if 'diarization' in config_dict:
+            if 'pyannote' in config_dict['diarization']:
+                config_dict['diarization']['pyannote'] = PyAnnoteConfig(**config_dict['diarization']['pyannote'])
+            if 'nemo' in config_dict['diarization']:
+                config_dict['diarization']['nemo'] = NemoConfig(**config_dict['diarization']['nemo'])
 
         return cls(
 
@@ -118,4 +145,4 @@ class AppConfig:
             output=OutputConfig(**config_dict['output']),
             logging=LoggingConfig(**config_dict['logging'])
 
-        ) 
+        )

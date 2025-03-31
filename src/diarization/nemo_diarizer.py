@@ -22,39 +22,17 @@ class NemoDiarizer(BaseDiarizer):
             
             self.logger.info("Initializing NeMo diarization models...")
             
-            # Load VAD model
-            vad_model_name = self.config.diarization.nemo.vad_model
-            self.logger.info(f"Loading VAD model: {vad_model_name}")
-            self.vad_model = nemo_asr.models.EncDecClassificationModel.from_pretrained(
-                model_name=vad_model_name
-            )
+            # We don't need to pre-load models as they will be loaded by the NeuralDiarizer
+            # when diarize() is called. This is the approach used in diarize_audio.py
+            self.logger.info("NeMo models will be loaded on demand during diarization")
             
-            # Load speaker embedding model
-            speaker_model_name = self.config.diarization.nemo.speaker_model
-            self.logger.info(f"Loading speaker model: {speaker_model_name}")
-            self.speaker_model = nemo_asr.models.EncDecSpeakerLabelModel.from_pretrained(
-                model_name=speaker_model_name
-            )
-            
-            # Load multiscale diarization decoder model if specified
-            if self.config.diarization.nemo.msdd_model:
-                msdd_model_name = self.config.diarization.nemo.msdd_model
-                self.logger.info(f"Loading MSDD model: {msdd_model_name}")
-                self.msdd_model = nemo_asr.models.ClusteringDiarizer.from_pretrained(
-                    model_name=msdd_model_name
-                )
-            
-            # Move models to appropriate device
+            # Check if CUDA is available
             if torch.cuda.is_available() and self.config.performance.device == "cuda":
-                self.logger.info("Moving NeMo models to CUDA")
-                if self.vad_model:
-                    self.vad_model = self.vad_model.to(torch.device("cuda"))
-                if self.speaker_model:
-                    self.speaker_model = self.speaker_model.to(torch.device("cuda"))
-                if self.msdd_model:
-                    self.msdd_model = self.msdd_model.to(torch.device("cuda"))
+                self.logger.info("CUDA is available and will be used for diarization")
+            else:
+                self.logger.info("CUDA is not available, using CPU for diarization")
             
-            self.logger.info("Successfully initialized NeMo diarization models")
+            self.logger.info("Successfully initialized NeMo diarization")
             
         except ImportError as e:
             self.logger.error(f"Failed to import NeMo: {str(e)}. Is NeMo properly installed?")
@@ -65,95 +43,331 @@ class NemoDiarizer(BaseDiarizer):
     
 
     def process(self, audio_path: str) -> List[Dict[str, any]]:
-        """Process audio file using NeMo diarization pipeline"""
+        """Process audio file using NeMo diarization pipeline exactly like diarize_audio.py"""
         try:
             import nemo.collections.asr as nemo_asr
-
-            # Convert to WAV format with proper specs
-            wav_path = self._ensure_wav_format(audio_path)
+            from omegaconf import OmegaConf
+            import tempfile
             
-            # Verify and fix audio tensor dimensions
-            wav_path = self._verify_and_fix_audio(wav_path)
+            self.logger.info(f"Processing audio file for diarization: {audio_path}")
             
-            # Create manifest file
-            manifest_file = self._create_manifest(wav_path)
+            # Create a temporary directory for manifest files
+            temp_dir = tempfile.mkdtemp()
+            self.logger.info(f"Created temporary directory: {temp_dir}")
+            
+            # Preprocess audio file - exactly like in diarize_audio.py
+            preprocessed_audio_file = self._preprocess_audio(audio_path, temp_dir)
+            
+            # Create manifest file - exactly like in diarize_audio.py
+            manifest_filepath = self._create_diarize_manifest(preprocessed_audio_file, temp_dir)
             
             # Create output directory
-            out_dir = os.path.join(os.path.dirname(wav_path), 'diar_outputs')
-            os.makedirs(out_dir, exist_ok=True)
-
-            # Configuration with proper tensor handling
-            diar_config = {
-                'device': 'cuda' if torch.cuda.is_available() and self.config.performance.device == "cuda" else 'cpu',
-                'num_workers': 0,  # Avoid multiprocessing issues
+            project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+            output_dir = os.path.join(project_root, 'data', 'output')
+            os.makedirs(output_dir, exist_ok=True)
+            self.logger.info(f"Output directory: {output_dir}")
+            
+            # Detect available device
+            device = 'cuda' if torch.cuda.is_available() and self.config.performance.device == "cuda" else 'cpu'
+            self.logger.info(f"Using device: {device}")
+            
+            # Configuration structure exactly like diarize_audio.py
+            nemo_diar_config = {
+                'device': device,
+                'batch_size': 1,
+                'num_workers': 0,
+                'sample_rate': 16000,
+                'verbose': True,
                 'diarizer': {
-                    'manifest_filepath': manifest_file,
-                    'out_dir': out_dir,
+                    'manifest_filepath': manifest_filepath,
+                    'out_dir': output_dir,
+                    'paths2audio_files': [preprocessed_audio_file],
+                    'num_speakers': self.config.diarization.num_speakers if hasattr(self.config.diarization, 'num_speakers') else None,
                     'oracle_vad': False,
-                    'speaker_embeddings': {
-                        'model_path': self.config.diarization.nemo.speaker_model,
+                    'collar': 0.25,
+                    'ignore_overlap': False,
+                    'vad': {
+                        'model_path': 'vad_multilingual_marblenet',
                         'parameters': {
-                            'window_length_in_sec': 1.5,
-                            'shift_length_in_sec': 0.75,
+                            'window_length_in_sec': 0.15,
+                            'shift_length_in_sec': 0.01,
+                            'overlap': 0.5,
+                            'smoothing': 'median',
+                            'window_size_for_smoothing': 3,
+                            'threshold': 0.5,
+                            'onset': 0.5,
+                            'offset': 0.5,
+                        }
+                    },
+                    'msdd_model': {
+                        'model_path': 'diar_msdd_telephonic',
+                        'parameters': {
+                            'use_speaker_model_from_ckpt': True,
+                            'diar_window_length': 50,
+                            'diar_shift_length': 10,
+                            'speaker_overlap_threshold': 0.5,
+                            'infer_batch_size': 1,
+                            'seq_eval_mode': True,
+                            'diar_eval_settings': [(0.25, True), (0.25, False), (0.0, False)],
+                            'max_num_of_spks': 20,
+                            'overlap_infer_spk_limit': 10
+                        }
+                    },
+                    'speaker_embeddings': {
+                        'model_path': 'titanet_large',
+                        'parameters': {
+                            'window_length_in_sec': [1.5],
+                            'shift_length_in_sec': [0.75],
+                            'embed_batch_size': 64,
+                            'device': device,
                             'multiscale_weights': [1.0],
                             'save_embeddings': False
                         }
                     },
-                    'vad': {
-                        'model_path': self.config.diarization.nemo.vad_model,
-                        'parameters': {
-                            'threshold': 0.5,
-                            'window_length_in_sec': 0.15,
-                            'shift_length_in_sec': 0.01,
-                            'smoothing': False,
-                            'smoothing_method': "median"
-                        }
-                    },
                     'clustering': {
+                        'method': 'cosine',
                         'parameters': {
-                            'method': 'sc',
-                            'min_samples': 2,
-                            'oracle_num_speakers': False,
-                            'max_num_speakers': 8
+                            'max_num_speakers': 20,
+                            'sparse_search_volume': 30,
+                            'enhanced_count_thres': 80,
+                            'pval_thres': 0.02,
+                            'max_rp_threshold': 0.15,
+                            'oracle_num_speakers': False
                         }
                     }
+                },
+                'vad': {
+                    'model_path': 'vad_multilingual_marblenet',
+                    'parameters': {
+                        'window_length_in_sec': 0.15,
+                        'shift_length_in_sec': 0.01,
+                        'smoothing': 'median',
+                        'window_size_for_smoothing': 31,
+                        'threshold': 0.4,
+                        'onset': 0.4,
+                        'offset': 0.3,
+                        'pad_onset': 0.1,
+                        'pad_offset': 0.2
+                    }
+                },
+                'asr': {
+                    'model_path': 'stt_en_conformer_ctc_large',
+                    'parameters': {
+                        'asr_based_vad': True,
+                        'word_ts_anchor_offset': 0.15,
+                        'ctc_decoder_params': {
+                            'beam_size': 16,
+                            'hotwords': []
+                        }
+                    }
+                },
+                'parallel': {
+                    'vad_parallel_workers': 4,
+                    'embedding_parallel_batches': 8,
+                    'cluster_parallel_threads': 2
+                },
+                'device_settings': {
+                    'vad_device': 'cpu',
+                    'embedding_device': device,
+                    'force_cpu': False
+                },
+                'preprocessing': {
+                    'resample': True,
+                    'target_sample_rate': 16000,
+                    'audio_channel': 'mix'
+                },
+                'validation': {
+                    'check_audio_length': True,
+                    'min_audio_length': 0.5,
+                    'max_audio_length': 36000,
+                    'sample_rate': 16000
                 }
             }
-
+            
             # Handle number of speakers if specified
             if hasattr(self.config.diarization, 'num_speakers') and self.config.diarization.num_speakers:
-                diar_config['diarizer']['clustering']['parameters']['oracle_num_speakers'] = True
-                diar_config['diarizer']['clustering']['parameters']['oracle_value'] = self.config.diarization.num_speakers
-
+                nemo_diar_config['diarizer']['clustering']['parameters']['oracle_num_speakers'] = True
+                nemo_diar_config['diarizer']['clustering']['parameters']['oracle_value'] = self.config.diarization.num_speakers
+            
             # Convert to OmegaConf
-            cfg = OmegaConf.create(diar_config)
-
-            # Create diarizer
-            diarizer = nemo_asr.models.ClusteringDiarizer(cfg=cfg)
+            diarizer_config = OmegaConf.create(nemo_diar_config)
             
-            # Set models directly to avoid serialization issues
-            diarizer.speaker_model = self.speaker_model
-            diarizer.vad_model = self.vad_model
+            # Initialize diarizer - exactly like in diarize_audio.py
+            self.logger.info("Initializing NeMo Neural Diarizer...")
+            diarizer = nemo_asr.models.NeuralDiarizer(cfg=diarizer_config)
             
-            # Run diarization with tensor shape validation
-            try:
-                diarizer.diarize()
-            except RuntimeError as e:
-                if "0-d tensor" in str(e):
-                    self.logger.error("Empty tensor detected - checking audio file")
-                    # Re-process audio with more aggressive conversion
-                    wav_path = self._force_audio_conversion(wav_path)
-                    cfg.diarizer.manifest_filepath = self._create_manifest(wav_path)
-                    diarizer.diarize()
-                else:
-                    raise
-
-            # Process results...
-            return self._process_rttm_results(out_dir, os.path.basename(wav_path))
-
+            # Run diarization
+            self.logger.info("Running diarization...")
+            diarizer.diarize()
+            
+            # Process results from RTTM file
+            # NeMo creates RTTM files in the pred_rttms subdirectory with the processed filename
+            base_filename = os.path.splitext(os.path.basename(preprocessed_audio_file))[0]
+            
+            # Try to find RTTM file in both possible locations
+            rttm_file = os.path.join(output_dir, 'pred_rttms', f"{base_filename}_processed.rttm")
+            cluster_label_file = os.path.join(output_dir, 'speaker_outputs', 'subsegments_scale0_cluster.label')
+            
+            self.logger.info(f"Checking for diarization results at: {rttm_file}")
+            self.logger.info(f"Alternative location: {cluster_label_file}")
+            
+            # First try to use the RTTM file
+            if os.path.exists(rttm_file):
+                self.logger.info(f"Using RTTM file: {rttm_file}")
+                segments = []
+                with open(rttm_file, 'r') as f:
+                    for line in f:
+                        parts = line.strip().split()
+                        if len(parts) >= 8:
+                            start_time = float(parts[3])
+                            duration = float(parts[4])
+                            end_time = start_time + duration
+                            speaker = parts[7]
+                            
+                            segments.append({
+                                "start": start_time,
+                                "end": end_time,
+                                "speaker": speaker.upper(),  # Convert to uppercase to match format in diarize_audio.py
+                                "duration": duration
+                            })
+            # If RTTM file doesn't exist, try using the cluster label file
+            elif os.path.exists(cluster_label_file):
+                self.logger.info(f"Using cluster label file: {cluster_label_file}")
+                segments = []
+                
+                # Also need to load the subsegments file to get timestamps
+                subsegments_file = os.path.join(output_dir, 'speaker_outputs', 'subsegments_scale0.json')
+                if not os.path.exists(subsegments_file):
+                    self.logger.error(f"Subsegments file not found: {subsegments_file}")
+                    return self._fallback_simple_diarization(audio_path)
+                
+                # Load subsegments to get timestamps
+                import json
+                with open(subsegments_file, 'r') as f:
+                    subsegments = json.load(f)
+                
+                # Load cluster labels
+                with open(cluster_label_file, 'r') as f:
+                    cluster_labels = f.readlines()
+                
+                # Process each segment with its label
+                for i, (subsegment, label_line) in enumerate(zip(subsegments, cluster_labels)):
+                    if 'start' in subsegment and 'end' in subsegment:
+                        start_time = float(subsegment['start'])
+                        end_time = float(subsegment['end'])
+                        duration = end_time - start_time
+                        speaker = label_line.strip()
+                        
+                        segments.append({
+                            "start": start_time,
+                            "end": end_time,
+                            "speaker": f"SPEAKER_{speaker}",  # Format speaker ID
+                            "duration": duration
+                        })
+            else:
+                self.logger.error(f"Neither RTTM file nor cluster label file found")
+                return self._fallback_simple_diarization(audio_path)
+            
+            # If no segments were found, use fallback
+            if not segments:
+                self.logger.warning("No segments found in diarization results, using fallback diarization")
+                return self._fallback_simple_diarization(audio_path)
+            
+            # Consolidate segments for the same speaker that are close together
+            consolidated_segments = self._consolidate_segments(segments)
+            
+            self.logger.info(f"Processed {len(consolidated_segments)} segments from diarization results")
+            return consolidated_segments
+            
         except Exception as e:
             self.logger.error(f"Diarization failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return self._fallback_simple_diarization(audio_path)
+    
+    def _consolidate_segments(self, segments: List[Dict[str, any]], gap_threshold: float = 0.5) -> List[Dict[str, any]]:
+        """
+        Consolidate segments for the same speaker that are close together.
+        This helps create longer, more meaningful segments for transcription alignment.
+        
+        Args:
+            segments: List of diarization segments
+            gap_threshold: Maximum gap between segments to consolidate (in seconds)
+            
+        Returns:
+            List of consolidated segments
+        """
+        if not segments:
+            return []
+            
+        # Sort segments by start time
+        sorted_segments = sorted(segments, key=lambda x: x["start"])
+        
+        consolidated = []
+        current = sorted_segments[0].copy()
+        
+        for next_segment in sorted_segments[1:]:
+            # If same speaker and gap is small enough, merge segments
+            if (next_segment["speaker"] == current["speaker"] and 
+                next_segment["start"] - current["end"] <= gap_threshold):
+                current["end"] = next_segment["end"]
+                current["duration"] = current["end"] - current["start"]
+            else:
+                # Add current segment to consolidated list and start a new one
+                consolidated.append(current)
+                current = next_segment.copy()
+        
+        # Add the last segment
+        consolidated.append(current)
+        
+        return consolidated
+
+    def _process_rttm_results(self, out_dir: str, base_filename: str) -> List[Dict[str, any]]:
+        """
+        Process RTTM results from NeMo diarization
+        
+        Args:
+            out_dir: Directory containing the RTTM files
+            base_filename: Base filename of the processed audio
+            
+        Returns:
+            List of diarization segments with start, end, and speaker information
+        """
+        try:
+            # Construct the RTTM file path
+            base_name = os.path.splitext(base_filename)[0]
+            rttm_file = os.path.join(out_dir, f"{base_name}.rttm")
+            
+            self.logger.info(f"Processing RTTM results from: {rttm_file}")
+            
+            if not os.path.exists(rttm_file):
+                self.logger.warning(f"RTTM file not found: {rttm_file}")
+                return []
+            
+            # Parse RTTM file
+            segments = []
+            with open(rttm_file, 'r') as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 8:
+                        start_time = float(parts[3])
+                        duration = float(parts[4])
+                        end_time = start_time + duration
+                        speaker = parts[7]
+                        
+                        segments.append({
+                            "start": start_time,
+                            "end": end_time,
+                            "speaker": speaker,
+                            "duration": duration
+                        })
+            
+            self.logger.info(f"Processed {len(segments)} segments from RTTM file")
+            return segments
+            
+        except Exception as e:
+            self.logger.error(f"Failed to process RTTM results: {str(e)}")
+            return self._fallback_simple_diarization(os.path.join(out_dir, base_filename))
 
     def _verify_and_fix_audio(self, wav_path: str) -> str:
         """Verify and fix audio tensor dimensions"""
@@ -321,7 +535,7 @@ class NemoDiarizer(BaseDiarizer):
             
             self.temp_files.append(temp_wav_path)
             return temp_wav_path
-    
+        
         except Exception as e:
             self.logger.error(f"Audio conversion failed: {str(e)}")
             raise
@@ -444,3 +658,63 @@ class NemoDiarizer(BaseDiarizer):
                 "speaker": "SPEAKER_0",
                 "duration": duration
             }]
+
+    def _preprocess_audio(self, audio_file: str, temp_dir: str) -> str:
+        """
+        Preprocess audio file to ensure compatibility with NeMo diarization.
+        Matches the implementation in diarize_audio.py
+        """
+        try:
+            import soundfile as sf
+            import librosa
+            import numpy as np
+            
+            self.logger.info(f"Preprocessing audio file: {os.path.basename(audio_file)}")
+            
+            # Load audio file with librosa
+            y, sr = librosa.load(audio_file, sr=16000, mono=True)
+            
+            # Ensure the audio is in the correct format (16kHz, mono)
+            if sr != 16000:
+                y = librosa.resample(y, orig_sr=sr, target_sr=16000)
+                sr = 16000
+            
+            # Save as WAV file with soundfile
+            base_filename = os.path.splitext(os.path.basename(audio_file))[0]
+            temp_wav_path = os.path.join(temp_dir, f"{base_filename}_processed.wav")
+            sf.write(temp_wav_path, y, sr, subtype='PCM_16')
+            
+            self.logger.info(f"Audio preprocessed and saved to: {temp_wav_path}")
+            return temp_wav_path
+        
+        except Exception as e:
+            self.logger.error(f"Error preprocessing audio: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return audio_file  # Return original file if preprocessing fails
+    
+    def _create_diarize_manifest(self, audio_file: str, temp_dir: str) -> str:
+        """
+        Creates a temporary manifest file for NeMo diarization.
+        Matches the implementation in diarize_audio.py
+        """
+        import json
+        
+        manifest_content = {
+            'audio_filepath': audio_file,
+            'offset': 0,
+            'duration': None,
+            'label': 'infer',
+            'text': '-',
+            'num_speakers': self.config.diarization.num_speakers if hasattr(self.config.diarization, 'num_speakers') else None,
+            'rttm_filepath': None,
+            'uem_filepath': None
+        }
+        
+        # Save to JSON file
+        manifest_filepath = os.path.join(temp_dir, 'manifest.json')
+        with open(manifest_filepath, 'w') as f:
+            json.dump(manifest_content, f)
+        
+        self.logger.info(f"Created manifest file: {manifest_filepath}")
+        return manifest_filepath

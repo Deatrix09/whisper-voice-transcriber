@@ -33,7 +33,7 @@ transcription:
 # Diarization settings
 diarization:
   enabled: true
-  module: "nemo"  # Choose between "pyannote" or "nemo"
+  module: "pyannote"  # Choose between "pyannote" or "nemo"
   num_speakers: null  # Optional: Set number of speakers (e.g., 2). Leave as null for automatic detection
 
   pyannote:

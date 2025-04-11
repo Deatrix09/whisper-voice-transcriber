@@ -1,0 +1,109 @@
+# Optimal Nvidia NeMo Diarization Configuration for Podcast Audio
+# Optimized for multi-lingual support, background noise management, and overlapping speech handling
+# NeMo diarization configuration
+nemo:
+  enabled: true
+  # Multi-lingual VAD model for robust speech detection across languages
+  vad_model: "vad_multilingual_marblenet"  # Multi-lingual VAD model
+  # TitaNet Large for better speaker embedding quality
+  speaker_model: "titanet_large"  # High-quality speaker embeddings
+  # MSDD model for overlapping speech detection
+  msdd_model: "diar_msdd_telephonic"  # Enable overlapping speech detection
+  
+  # Clustering parameters optimized for podcast conversations
+  clustering_params:
+    method: "sc"  # Spectral clustering for better speaker separation
+    min_samples: 2  # Minimum number of samples per speaker
+    oracle_num_speakers: false  # Auto-detect number of speakers
+    max_num_speakers: 8  # Maximum number of speakers to detect (typical for podcasts)
+    enhanced_count_thres: 100  # Increased from default for better speaker consistency
+    max_rp_threshold: 0.15  # Determines the range of p-value search
+    sparse_search_volume: 30  # Higher value for more thorough clustering
+    pval_thres: 0.015  # Lower threshold for more sensitive speaker detection
+  
+  # Voice Activity Detection parameters optimized for noisy podcast environments
+  vad_params:
+    # Smaller window for more precise speech detection
+    window_length_in_sec: 0.15  # Window length in seconds
+    shift_length_in_sec: 0.01  # Small shift for fine-grained detection
+    # Lower threshold for detecting speech in noisy environments
+    threshold: 0.45  # Lower threshold to catch more speech in noisy conditions
+    # Parameters for smoothing and noise handling
+    smoothing: "median"  # Median smoothing for noise reduction
+    window_size_for_smoothing: 31  # Larger window for better noise smoothing
+    # Onset/offset thresholds for better speech boundary detection
+    onset: 0.4  # Threshold for detecting the beginning of speech
+    offset: 0.3  # Threshold for detecting the end of speech
+    # Padding to avoid cutting off speech
+    pad_onset: 0.1  # Add padding before detected speech
+    pad_offset: 0.2  # Add padding after detected speech
+    # Minimum durations to filter out noise
+    min_duration_on: 0.2  # Minimum speech segment duration
+    min_duration_off: 0.2  # Minimum silence segment duration
+    filter_speech_first: true  # Apply speech filtering first
+  
+  # Speaker embedding parameters optimized for podcast audio
+  speaker_embeddings_params:
+    window_length_in_sec: [1.5, 2.5]  # Multi-scale windows for better speaker characterization
+    shift_length_in_sec: [0.75, 1.25]  # Corresponding shifts for each window
+    multiscale_weights: [0.5, 0.5]  # Equal weights for both scales
+    save_embeddings: false  # Don't save embeddings to save space
+    
+  # MSDD (Multi-scale Diarization Decoder) parameters for overlapping speech
+  msdd_params:
+    use_speaker_model_from_ckpt: true
+    diar_window_length: 50  # Window length for diarization decisions
+    diar_shift_length: 10  # Shift length for diarization decisions
+    speaker_overlap_threshold: 0.5  # Threshold for detecting overlapping speakers
+    infer_batch_size: 1
+    seq_eval_mode: true
+    diar_eval_settings: [(0.25, true), (0.25, false), (0.0, false)]
+    max_num_of_spks: 8  # Maximum number of speakers to detect
+    overlap_infer_spk_limit: 8  # Limit for overlapping speaker inference
+
+# Audio preprocessing settings
+audio_preprocessing:
+# Noise reduction settings
+noise_reduction:
+  enabled: true
+  aggressiveness: 0.7  # Higher value for more aggressive noise reduction
+
+# Audio normalization
+normalize_audio: true
+target_level: -23  # Target loudness level in LUFS
+
+# Resampling settings
+resample: true
+target_sample_rate: 16000  # 16kHz sample rate required by NeMo
+
+# Channel handling
+audio_channel: "mix"  # Use mixed channels for mono output
+
+# Performance settings
+performance:
+device: "cuda"  # Use GPU for faster processing
+num_workers: 4  # Number of worker threads
+
+# Parallel processing settings
+vad_parallel_workers: 4
+embedding_parallel_batches: 8
+cluster_parallel_threads: 2
+
+# Device settings
+device_settings:
+  vad_device: "cuda"  # Run VAD on GPU
+  embedding_device: "cuda"  # Run embedding extraction on GPU
+  force_cpu: false  # Don't force CPU usage
+
+# Post-processing settings
+post_processing:
+# Segment merging parameters
+merge_segments:
+  enabled: true
+  gap_threshold: 0.5  # Maximum gap between segments to merge (seconds)
+
+# Minimum segment duration
+min_segment_duration: 0.3  # Minimum duration for a valid segment (seconds)
+
+# Speaker label smoothing
+smoothing_window: 3  # Window size for speaker label smoothing

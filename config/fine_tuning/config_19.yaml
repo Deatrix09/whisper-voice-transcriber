@@ -1,0 +1,73 @@
+# Model settings
+model:
+  name: "large-v2"
+  language: ""
+
+# Whisper AI Configuration
+whisper:
+  sample_rate: 16000
+
+# Audio processing
+audio:
+  chunk_size: 360
+  chunk_threshold_mb: 20
+  chunk_overlap_sec: 0
+
+# Performance settings
+performance:
+  device: "cuda"
+  num_workers: 4
+
+# Transcription settings
+transcription:
+  task: "transcribe"
+  temperature: 0.9
+  compression_ratio_threshold: 3.8
+  logprob_threshold: -4.0
+  no_speech_threshold: 0.4
+  fp16: true
+  verbose: false
+  multi_language: false
+
+# Diarization settings
+diarization:
+  enabled: true
+  module: "nemo"
+  num_speakers: 6
+
+  pyannote:
+    enabled: false
+    model: "pyannote/speaker-diarization-3.1"
+    auth_token: "***REMOVED***"
+    min_duration_off: 0.9
+    min_cluster_size: 3
+    method: "complete"
+
+  nemo:
+    enabled: true
+    vad_model: "vad_multilingual_marblenet"
+    speaker_model: "resnet_se"
+    msdd_model: null
+    clustering_params:
+      method: "spectral"
+      min_samples: 7
+      oracle_num_speakers: false
+      max_num_speakers: 25
+      enhanced_count_thres: 40
+    vad_params:
+      threshold: 0.8
+      window_length_in_sec: 0.35
+      shift_length_in_sec: 0.008
+
+# Output settings
+output:
+  format: "txt"
+  style: "timestamped"
+
+# Logging
+logging:
+  level: "INFO"
+  file: "whisper_transcription"
+  console_level: "INFO"
+  file_level: "DEBUG"
+  retention_days: 1

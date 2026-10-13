@@ -1,6 +1,6 @@
 import yaml
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from typing import Optional, Dict, Any
 
@@ -53,6 +53,24 @@ class TranscriptionConfig:
 
 
 @dataclass
+class AsrConfig:
+    """FÁZE 4: sjednocené ASR nastavení (nová `asr:` sekce, vše s defaulty).
+
+    Staré YAML bez `asr:` sekce fungují dál: model se bere z `model.name`,
+    compute_type = auto. `engine: auto|parakeet` aktivuje až FÁZE 5 router
+    (do té doby warning + faster-whisper fallback v transcriberu).
+    """
+
+    engine: str = "faster-whisper"  # auto|faster-whisper|parakeet
+    model: str = "large-v3-turbo"
+    compute_type: Optional[str] = None  # None = auto (int8_float16 CUDA / int8 CPU)
+    batch_size: int = 4  # pyannote segmentation/embedding batche; parakeet batch
+    align_words: bool = False  # True = word_timestamps (volitelný align krok)
+    parakeet_model: Optional[str] = None  # None = nvidia/parakeet-tdt-0.6b-v3
+
+
+
+@dataclass
 class PyAnnoteConfig:
 
     enabled: bool
@@ -77,13 +95,32 @@ class NemoConfig:
 
 
 @dataclass
+class SortformerConfig:
+
+    enabled: bool
+    model: str = "nvidia/diar_streaming_sortformer_4spk-v2.1"
+    batch_size: int = 1
+
+
+
+@dataclass
+class NemotronConfig:
+
+    enabled: bool
+    model: str = "nvidia/Nemotron-3-Diarization"
+
+
+
+@dataclass
 class DiarizationConfig:
 
     enabled: bool
-    module: str  # "pyannote" or "nemo"
+    module: str  # "pyannote", "sortformer", "nemotron-3", "nemo" (legacy)
     num_speakers: Optional[int] = None
     pyannote: Optional[PyAnnoteConfig] = None
     nemo: Optional[NemoConfig] = None
+    sortformer: Optional[SortformerConfig] = None
+    nemotron: Optional[NemotronConfig] = None
 
 
 
@@ -117,6 +154,7 @@ class AppConfig:
     diarization: DiarizationConfig
     output: OutputConfig
     logging: LoggingConfig
+    asr: AsrConfig = field(default_factory=AsrConfig)
 
 
 
@@ -124,15 +162,23 @@ class AppConfig:
 
     def from_yaml(cls, path: str) -> 'AppConfig':
 
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             config_dict = yaml.safe_load(f)
 
-        # Convert nested diarization configs
+        # Convert nested diarization configs (chybějící sekce -> None, staré YAML fungují)
         if 'diarization' in config_dict:
             if 'pyannote' in config_dict['diarization']:
                 config_dict['diarization']['pyannote'] = PyAnnoteConfig(**config_dict['diarization']['pyannote'])
             if 'nemo' in config_dict['diarization']:
                 config_dict['diarization']['nemo'] = NemoConfig(**config_dict['diarization']['nemo'])
+            if 'sortformer' in config_dict['diarization']:
+                config_dict['diarization']['sortformer'] = SortformerConfig(**config_dict['diarization']['sortformer'])
+            if 'nemotron' in config_dict['diarization']:
+                config_dict['diarization']['nemotron'] = NemotronConfig(**config_dict['diarization']['nemotron'])
+
+        # FÁZE 4: `asr:` sekce je volitelná (defaulty AsrConfig), staré YAML fungují.
+        asr_raw = config_dict.get('asr')
+        asr_cfg = AsrConfig(**asr_raw) if isinstance(asr_raw, dict) else AsrConfig()
 
         return cls(
 
@@ -143,6 +189,7 @@ class AppConfig:
             transcription=TranscriptionConfig(**config_dict['transcription']),
             diarization=DiarizationConfig(**config_dict['diarization']),
             output=OutputConfig(**config_dict['output']),
-            logging=LoggingConfig(**config_dict['logging'])
+            logging=LoggingConfig(**config_dict['logging']),
+            asr=asr_cfg
 
         )

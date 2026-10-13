@@ -8,6 +8,9 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Compare transcription results using Levenshtein distance")
     parser.add_argument("--config", type=str, default="config/config.yaml", help="Path to configuration file")
     parser.add_argument("--input", type=str, required=True, help="Path to input audio file")
+    parser.add_argument("--models", type=str, default=None,
+                        help="Comma-separated subset, e.g. 'tiny,turbo,parakeet' "
+                             "(default: tiny,base,small,medium,large-v2,large-v3)")
     return parser.parse_args()
 
 def main():
@@ -22,6 +25,11 @@ def main():
     
     # Initialize comparator
     comparator = LevenshteinComparator(config)
+
+    # FÁZE 6: --models filtr (validace proti známým jménům)
+    if args.models:
+        names = [m.strip() for m in args.models.split(",") if m.strip()]
+        comparator.set_models(names)
     
     # Process audio and get comparison results
     results = comparator.process_audio(input_path)

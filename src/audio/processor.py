@@ -1,27 +1,33 @@
 import torch
-import torchaudio
 from typing import Tuple, Optional, List, Dict
 import numpy as np
 from src.utils.logger import setup_logger
-import librosa
-import noisereduce as nr
-from pydub import AudioSegment
 import os
 import tempfile
+import time
+
+# Těžké audio závislosti lazy (torchaudio/librosa/noisereduce/pydub),
+# aby import modulu fungoval i bez nich a cold start byl rychlejší.
+# Viz audit L09.
 
 class AudioProcessor:
     def __init__(self, config):
         self.config = config
-        self.logger = setup_logger(__name__, config.logging.level, config.logging.file)
+        self.logger = setup_logger(__name__, config.logging.level, config.logging.file,
+                                     file_level=getattr(config.logging, "file_level", None),
+                                     console_level=getattr(config.logging, "console_level", None))
         self.converted_file_path: Optional[str] = None
         self.temp_files: List[str] = []
         
     def reduce_noise(self, waveform: torch.Tensor, sample_rate: int) -> torch.Tensor:
         try:
+            import noisereduce as nr
             self.logger.info("Applying noise reduction...")
-            
+
             # Convert torch tensor to numpy array for noise reduction
-            audio_np = waveform.numpy().squeeze()
+            # .detach().cpu() aby to fungovalo i pro CUDA / grad tensory.
+            with torch.no_grad():
+                audio_np = waveform.detach().cpu().numpy().squeeze()
             
             # Apply noise reduction
             reduced_noise = nr.reduce_noise(
@@ -41,13 +47,15 @@ class AudioProcessor:
     def normalize_audio(self, waveform: torch.Tensor) -> torch.Tensor:
         try:
             self.logger.info("Normalizing audio levels...")
-            return torch.nn.functional.normalize(waveform, dim=1)
+            with torch.no_grad():
+                return torch.nn.functional.normalize(waveform.detach(), dim=1)
         except Exception as e:
             self.logger.warning(f"Audio normalization failed: {str(e)}")
             return waveform
 
     def convert_m4a_to_wav(self, input_path: str) -> str:
         try:
+            from pydub import AudioSegment
             self.logger.info(f"Converting M4A to WAV: {input_path}")
             output_path = os.path.splitext(input_path)[0] + '.wav'
             
@@ -70,13 +78,24 @@ class AudioProcessor:
             self.logger.error(f"Failed to convert M4A to WAV: {str(e)}")
             raise
 
-    def load_audio(self, file_path: str) -> Tuple[torch.Tensor, int, Optional[str]]:
+    def load_audio(
+        self, file_path: str, load_waveform: bool = True
+    ) -> Tuple[torch.Tensor, int, Optional[str]]:
+        """Načti audio. load_waveform=False jen zajistí konverzi m4a->wav
+        a nealokuje ~460MB tensor (pipeline waveform nepotřebuje, L01)."""
         try:
             converted_path = None
             if file_path.lower().endswith('.m4a'):
                 converted_path = self.convert_m4a_to_wav(file_path)
                 file_path = converted_path
-            
+
+            if not load_waveform:
+                self.logger.info(
+                    f"Skipping waveform decode (load_waveform=False): {file_path}"
+                )
+                return torch.empty(0), self.config.whisper.sample_rate, converted_path
+
+            import torchaudio
             # Load audio file
             waveform, sample_rate = torchaudio.load(file_path)
             
@@ -106,81 +125,233 @@ class AudioProcessor:
     def split_audio_file(self, file_path: str) -> List[str]:
         """
         Split a large audio file into smaller chunks for better processing.
-        Returns a list of paths to the temporary chunked files.
+        Streamuje přes PyAV (16kHz mono) místo načtení celého souboru do RAM,
+        každý 30s chunk projde Silero VAD prefiltrem (tiché chunky = placeholder).
+        Vrací List[str] temp wav chunků; časy řeší merge_transcription_results.
         """
         try:
             self.logger.info(f"Splitting audio file: {file_path}")
-            
+
             # Get file size in MB
             file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-            
+
             # Get thresholds from config or use defaults
             threshold_mb = self.config.audio.chunk_threshold_mb
             self.logger.info(f"Using chunk threshold: {threshold_mb} MB")
-            
+
             # If file is smaller than threshold, don't split
             if file_size_mb < threshold_mb:
                 self.logger.info(f"Audio file is small enough ({file_size_mb:.2f} MB), skipping split")
                 return [file_path]
-            
+
             # Load the audio file
             if file_path.lower().endswith('.m4a'):
                 file_path = self.convert_m4a_to_wav(file_path)
-                
-            audio = AudioSegment.from_file(file_path)
-            
-            # Get duration in seconds
-            duration = len(audio) / 1000
-            self.logger.info(f"Audio duration: {duration:.2f} seconds")
-            
-            # Get chunk size from config (in seconds)
-            chunk_size = self.config.audio.chunk_size
-            chunk_overlap = self.config.audio.chunk_overlap_sec
+
+            chunk_size = int(getattr(self.config.audio, "chunk_size", 30))
+            chunk_overlap = int(getattr(self.config.audio, "chunk_overlap_sec", 2))
             self.logger.info(f"Using chunk size: {chunk_size} seconds, overlap: {chunk_overlap} seconds")
-            
-            # Calculate number of chunks
-            num_chunks = int(np.ceil(duration / chunk_size))
-            
-            # If only one chunk is needed, return original file
-            if num_chunks <= 1:
-                self.logger.info("Audio file doesn't need splitting")
-                return [file_path]
-                
-            self.logger.info(f"Splitting audio into {num_chunks} chunks of approximately {chunk_size/60:.1f} minutes")
-            
-            # Create temp directory
-            temp_dir = tempfile.mkdtemp()
-            
-            # Split audio into chunks
-            chunk_files = []
-            
-            for i in range(num_chunks):
-                start_ms = i * chunk_size * 1000
-                end_ms = min((i + 1) * chunk_size * 1000, len(audio))
-                
-                # Add overlap for better continuity
-                if i > 0:
-                    start_ms -= chunk_overlap * 1000  # Convert overlap seconds to milliseconds
-                
-                chunk = audio[start_ms:end_ms]
-                
-                # Save chunk to temp file
-                chunk_path = os.path.join(temp_dir, f"chunk_{i}.wav")
-                chunk.export(chunk_path, format="wav", parameters=[
-                    "-ac", "1",
-                    "-ar", str(self.config.whisper.sample_rate),
-                    "-acodec", "pcm_s16le"
-                ])
-                
-                chunk_files.append(chunk_path)
-                self.temp_files.append(chunk_path)
-                
-            self.logger.info(f"Successfully split audio into {len(chunk_files)} chunks")
-            return chunk_files
-            
+
+            # ZÁKAZ krátkých chunků: 10s chunky prokazatelně zvedají WER (+3.5%).
+            if chunk_size <= 10:
+                raise ValueError(
+                    f"chunk_size={chunk_size}s je zakázán: chunky <=10s zvedají WER "
+                    f"(+3.5% u 10s). Použij >=30s."
+                )
+            if chunk_size < 30:
+                self.logger.warning(
+                    f"chunk_size={chunk_size}s < 30s: kratší kontext může zhoršit přesnost"
+                )
+            if chunk_overlap < 0 or chunk_overlap >= chunk_size:
+                raise ValueError(
+                    f"chunk_overlap_sec={chunk_overlap} musí být v [0, chunk_size)"
+                )
+
+            try:
+                import av  # noqa: F401 - PyAV je tranzitivní závislost faster-whisper
+                return self._split_streaming(file_path, chunk_size, chunk_overlap)
+            except ImportError as e:
+                self.logger.warning(
+                    f"PyAV/Silero nedostupné ({e}), fallback na pydub (full-RAM)"
+                )
+                return self._split_via_pydub(file_path, chunk_size, chunk_overlap)
+
         except Exception as e:
             self.logger.error(f"Error splitting audio file: {str(e)}")
             raise
+
+    def _vad_speech_ratio(self, audio_f32: np.ndarray, sample_rate: int) -> Tuple[float, float]:
+        """Silero VAD v6 (bundlovaný ve faster-whisper) -> (speech_ratio, speech_sec).
+
+        Při chybějícím faster-whisper vrací (1.0, délka) = pass-through, chunk se
+        normálně přepošle Whisperu (ten má vlastní vad_filter).
+        """
+        duration = len(audio_f32) / sample_rate if sample_rate else 0.0
+        try:
+            from faster_whisper.vad import get_speech_timestamps, VadOptions
+        except ImportError as e:
+            self.logger.warning(f"Silero VAD nedostupné ({e}), VAD prefiltr přeskočen")
+            return 1.0, duration
+        opts = VadOptions(
+            threshold=0.5,
+            min_speech_duration_ms=250,
+            min_silence_duration_ms=500,
+            speech_pad_ms=200,
+        )
+        stamps = get_speech_timestamps(audio_f32, vad_options=opts, sampling_rate=sample_rate)
+        speech_sec = sum(s["end"] - s["start"] for s in stamps) / sample_rate
+        ratio = (speech_sec / duration) if duration > 0 else 0.0
+        return ratio, speech_sec
+
+    def _write_chunk(
+        self, window_i16: np.ndarray, temp_dir: str, idx: int, sample_rate: int,
+        min_speech_sec: float = 0.5,
+    ) -> str:
+        """Zapiš 1 chunk + VAD prefiltr + per-chunk timing log.
+
+        Tichý chunk (<min_speech_sec řeči) -> 0.5s silence placeholder:
+        indexová matematika merge (offset = idx*step) zůstává, Whisper jím
+        proletí a vad_filter vrátí prázdné segmenty.
+        """
+        import soundfile as sf
+        t0 = time.perf_counter()
+        chunk_path = os.path.join(temp_dir, f"chunk_{idx}.wav")
+
+        audio_f32 = window_i16.astype(np.float32) / 32768.0
+        ratio, speech_sec = self._vad_speech_ratio(audio_f32, sample_rate)
+
+        if speech_sec < min_speech_sec:
+            placeholder = np.zeros(sample_rate // 2, dtype=np.int16)  # 0.5s ticha
+            sf.write(chunk_path, placeholder, sample_rate, subtype="PCM_16", format="WAV")
+            self.temp_files.append(chunk_path)
+            self.logger.info(
+                f"Chunk {idx}: SILENT (speech={speech_sec:.2f}s) -> placeholder, "
+                f"vad={time.perf_counter()-t0:.2f}s"
+            )
+            return chunk_path
+
+        sf.write(chunk_path, window_i16, sample_rate, subtype="PCM_16", format="WAV")
+        self.temp_files.append(chunk_path)
+        self.logger.info(
+            f"Chunk {idx}: {len(window_i16)/sample_rate:.1f}s audio, "
+            f"speech={speech_sec:.1f}s ({ratio*100:.0f}%), "
+            f"decode+vad+write={time.perf_counter()-t0:.2f}s"
+        )
+        return chunk_path
+
+    def _split_streaming(self, file_path: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+        """Streamuj decode přes PyAV, peak RAM ~1 chunk (ne celý soubor).
+
+        Okna: start_idx = idx*(chunk-overlap), délka chunk; překryv se nese
+        v `carry`. Výstupní časová matematika == merge_transcription_results
+        (offset idx*chunk - overlap pro idx>0).
+        """
+        import av
+        t_all = time.perf_counter()
+        sample_rate = self.config.whisper.sample_rate
+        chunk_samples = chunk_size * sample_rate
+        overlap_samples = chunk_overlap * sample_rate
+        step_samples = chunk_samples - overlap_samples
+
+        temp_dir = tempfile.mkdtemp(prefix="wvt_chunks_")
+        try:
+            container = av.open(file_path)
+        except Exception as e:
+            try:
+                os.rmdir(temp_dir)
+            except OSError:
+                pass
+            raise
+
+        try:
+            audio_stream = next(s for s in container.streams if s.type == "audio")
+            resampler = av.AudioResampler(format="s16", layout="mono", rate=sample_rate)
+
+            buf = bytearray()  # jediný akumulátor int16 mono samplů (~1 chunk)
+            chunk_files: List[str] = []
+            idx = 0
+
+            for frame in container.decode(audio_stream):
+                for rframe in resampler.resample(frame):
+                    arr = rframe.to_ndarray()  # (1, N) int16
+                    if arr.shape[0] > 1:
+                        arr = arr.mean(axis=0, keepdims=True).astype(np.int16)
+                    buf += arr.tobytes()
+                    while len(buf) >= chunk_samples * 2:
+                        window = np.frombuffer(buf[:chunk_samples * 2], dtype=np.int16).copy()
+                        chunk_files.append(self._write_chunk(window, temp_dir, idx, sample_rate))
+                        idx += 1
+                        del buf[:step_samples * 2]  # nech překryv pro další okno
+
+            # Zbytek (>=0.5s) jako poslední částečný chunk (jako dřív ceil).
+            if len(buf) >= sample_rate // 2 * 2:
+                window = np.frombuffer(bytes(buf), dtype=np.int16).copy()
+                chunk_files.append(self._write_chunk(window, temp_dir, idx, sample_rate))
+                idx += 1
+
+            if not chunk_files:
+                self.logger.info("Audio file doesn't need splitting")
+                return [file_path]
+
+            self.logger.info(
+                f"Successfully split audio into {len(chunk_files)} streaming chunks "
+                f"({chunk_size}s/{chunk_overlap}s) in {time.perf_counter()-t_all:.1f}s"
+            )
+            return chunk_files
+        finally:
+            try:
+                container.close()
+            except Exception:
+                pass
+
+    def _split_via_pydub(self, file_path: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+        """Fallback bez PyAV: původní full-RAM cesta (pomalá, žere paměť)."""
+        from pydub import AudioSegment
+        audio = AudioSegment.from_file(file_path)
+
+        # Get duration in seconds
+        duration = len(audio) / 1000
+        self.logger.info(f"Audio duration: {duration:.2f} seconds")
+
+        # Calculate number of chunks
+        num_chunks = int(np.ceil(duration / chunk_size))
+
+        # If only one chunk is needed, return original file
+        if num_chunks <= 1:
+            self.logger.info("Audio file doesn't need splitting")
+            return [file_path]
+
+        self.logger.info(f"Splitting audio into {num_chunks} chunks of approximately {chunk_size/60:.1f} minutes")
+
+        # Create temp directory
+        temp_dir = tempfile.mkdtemp()
+
+        # Split audio into chunks
+        chunk_files = []
+
+        for i in range(num_chunks):
+            start_ms = i * chunk_size * 1000
+            end_ms = min((i + 1) * chunk_size * 1000, len(audio))
+
+            # Add overlap for better continuity
+            if i > 0:
+                start_ms -= chunk_overlap * 1000  # Convert overlap seconds to milliseconds
+
+            chunk = audio[start_ms:end_ms]
+
+            # Save chunk to temp file
+            chunk_path = os.path.join(temp_dir, f"chunk_{i}.wav")
+            chunk.export(chunk_path, format="wav", parameters=[
+                "-ac", "1",
+                "-ar", str(self.config.whisper.sample_rate),
+                "-acodec", "pcm_s16le"
+            ])
+
+            chunk_files.append(chunk_path)
+            self.temp_files.append(chunk_path)
+
+        self.logger.info(f"Successfully split audio into {len(chunk_files)} chunks")
+        return chunk_files
     
     def merge_transcription_results(self, results_list: List[Dict]) -> Dict:
         """

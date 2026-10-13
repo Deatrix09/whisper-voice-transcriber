@@ -49,10 +49,13 @@ class NemoDiarizer(BaseDiarizer):
         import tempfile
         
         self.logger.info(f"Processing audio file for diarization: {audio_path}")
-        
+
+        # L04: temp_dir se dřív nikdy nemazal (leak v %TEMP% při každém běhu).
+        # Stopa pro finally-cleanup i při výjimce před vytvořením.
+        temp_dir = None
         try:
             # Create a temporary directory for manifest files
-            temp_dir = tempfile.mkdtemp()
+            temp_dir = tempfile.mkdtemp(prefix="nemo_diar_")
             self.logger.info(f"Created temporary directory: {temp_dir}")
             
             # Preprocess audio file - exactly like in diarize_audio.py
@@ -153,7 +156,13 @@ class NemoDiarizer(BaseDiarizer):
                 'asr': {
                     'model_path': 'stt_en_conformer_ctc_large',
                     'parameters': {
-                        'asr_based_vad': True,
+                        # L04: False = NeMo nestahuje/neloaduje Conformer-CTC (~1GB)
+                        # jen pro word-timestamp VAD refinement. Náš kód čte pouze
+                        # speaker RTTM, VAD dál běží přes MarbleNet (diarizer.vad).
+                        # Odpovídá standardní NeMo system-VAD cestě
+                        # (offline_diar_infer.py); ASR větev je opt-in
+                        # (offline_diar_with_asr_infer.py).
+                        'asr_based_vad': False,
                         'word_ts_anchor_offset': 0.15,
                         'ctc_decoder_params': {
                             'beam_size': 16,
@@ -194,9 +203,10 @@ class NemoDiarizer(BaseDiarizer):
             
             # Initialize diarizer - exactly like in diarize_audio.py
             self.logger.info("Initializing NeMo Neural Diarizer...")
-            diarizer = nemo_asr.models.NeuralDiarizer(cfg=diarizer_config)
-            
+            self.logger.info("ASR-based VAD is disabled (MarbleNet VAD only, no Conformer download)")
+            diarizer = None
             try:
+                diarizer = nemo_asr.models.NeuralDiarizer(cfg=diarizer_config)
                 # Run diarization
                 self.logger.info("Running diarization...")
                 diarizer.diarize()
@@ -206,6 +216,18 @@ class NemoDiarizer(BaseDiarizer):
                 import traceback
                 self.logger.error(f"Traceback: {traceback.format_exc()}")
                 # Continue with the rest of the function to try to use any output files that might have been created
+            finally:
+                # L04: VAD/Titanet/MSDD váhy pryč z VRAM hned po diarize(),
+                # ne až na konci process() (souběh s Whisper na 8GB).
+                if diarizer is not None:
+                    del diarizer
+                import gc
+                gc.collect()
+                try:
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except Exception:
+                    pass
             
             # Process results from RTTM file
             # NeMo creates RTTM files in the pred_rttms subdirectory with the processed filename
@@ -371,6 +393,16 @@ class NemoDiarizer(BaseDiarizer):
                 "speaker": "SPEAKER_0",
                 "duration": duration
             }]
+        finally:
+            # L04: temp adresář (preprocessed wav + manifest) + temp soubory
+            # uklidit na VŠECH cestách včetně early-returnů a výjimek.
+            if temp_dir:
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            try:
+                self._cleanup_temp_files()
+            except Exception:
+                pass
     
     def _consolidate_segments(self, segments: List[Dict[str, any]], gap_threshold: float = 0.5) -> List[Dict[str, any]]:
         """

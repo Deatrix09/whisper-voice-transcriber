@@ -21,8 +21,26 @@ def get_log_filename(base_filename: str) -> str:
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     return f"{base_filename}_{timestamp}.log"
 
-def setup_logger(name: str, level: str, log_file: Optional[str] = None) -> logging.Logger:
-    """Configure and return a logger instance with both file and console handlers."""
+def _coerce_level(value: Optional[str], default: int) -> int:
+    """Převeď 'INFO'/'DEBUG'/... na logging level, jinak default."""
+    if not value:
+        return default
+    level = getattr(logging, str(value).upper(), None)
+    return level if isinstance(level, int) else default
+
+
+def setup_logger(
+    name: str,
+    level: str,
+    log_file: Optional[str] = None,
+    file_level: Optional[str] = None,
+    console_level: Optional[str] = None,
+) -> logging.Logger:
+    """Configure and return a logger instance with both file and console handlers.
+
+    file_level/console_level jsou volitelné (default INFO konzole / DEBUG soubor
+    = původní chování). Volající předává config.logging.file_level/console_level.
+    """
     global _initialized_loggers, _current_log_file
     
     # Check if this is a new execution or continuation
@@ -46,7 +64,7 @@ def setup_logger(name: str, level: str, log_file: Optional[str] = None) -> loggi
     # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(_coerce_level(console_level, logging.INFO))
     logger.addHandler(console_handler)
 
     # File handler - reuse the same log file for the entire execution
@@ -62,7 +80,7 @@ def setup_logger(name: str, level: str, log_file: Optional[str] = None) -> loggi
 
         file_handler = logging.FileHandler(_current_log_file, encoding='utf-8')
         file_handler.setFormatter(formatter)
-        file_handler.setLevel(logging.DEBUG)
+        file_handler.setLevel(_coerce_level(file_level, logging.DEBUG))
         logger.addHandler(file_handler)
         
         if is_first_logger:

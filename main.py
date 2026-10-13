@@ -1,28 +1,16 @@
 import argparse
-
 import json
-
-from src.utils.config import AppConfig
-
-from src.core.pipeline import Pipeline
-
-from src.utils.logger import setup_logger
-
-from src.utils.formatters import OutputFormatter
-
-from src.utils.path_utils import PathUtils
-
+import os
 from typing import List, Dict
 
-import os
-
+from src.utils.logger import setup_logger
+from src.utils.formatters import OutputFormatter
+from src.utils.path_utils import PathUtils
 from src.utils.log_cleanup import LogCleanup
 
-import torch
-
-from torch.serialization import add_safe_globals
-from torch.torch_version import TorchVersion
-from pyannote.audio.core.task import Specifications, Problem, Resolution
+# Pozn. (F): torch / pyannote / Pipeline / AppConfig se importují až v main()
+# za parse_arguments, aby --help a chyba v CLI neplatily cold start
+# těžkých závislostí (torch má přes 1 s, whisper/pyannote další).
 
 
 
@@ -52,11 +40,22 @@ def parse_arguments():
 
 def main():
 
-    # Add safe globals for torch serialization for running it on GPU
-    add_safe_globals([TorchVersion, Specifications, Problem, Resolution])
-
-    # Parse command line arguments
+    # Parse command line arguments first so --help works without torch.
     args = parse_arguments()
+
+    # Heavy imports lazy (F) - až po parsingu argumentů.
+    import torch
+    from torch.serialization import add_safe_globals
+    from torch.torch_version import TorchVersion
+    try:
+        # Jen pro pyannote větev (safe_globals pro torch.load 2.6+).
+        # Sortformer/nemotron-only běh pyannote nepotřebuje.
+        from pyannote.audio.core.task import Specifications, Problem, Resolution
+        add_safe_globals([TorchVersion, Specifications, Problem, Resolution])
+    except ImportError:
+        pass
+    from src.utils.config import AppConfig
+    from src.core.pipeline import Pipeline
 
     # Load configuration
     config = AppConfig.from_yaml(args.config)
@@ -66,7 +65,9 @@ def main():
 
     
     # Setup logger
-    logger = setup_logger("main", config.logging.level, config.logging.file)
+    logger = setup_logger("main", config.logging.level, config.logging.file,
+                          file_level=getattr(config.logging, "file_level", None),
+                          console_level=getattr(config.logging, "console_level", None))
 
     
 

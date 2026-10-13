@@ -23,6 +23,7 @@ dependencies = [
     "jiwer>=4.0",
     "soundfile>=0.13.1",  # pyannote 4.x vyžaduje >=0.13.1 (resolver)
     "pydub==0.25.1",
+    "transformers>=5.19",
     "librosa==0.10.2.post1",
     "noisereduce==3.0.3",
     "omegaconf==2.3.0",

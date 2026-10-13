@@ -125,9 +125,10 @@ def test_bf16_fallback_fp32(pk_config):
     assert t.device == "cuda"
 
 
-def test_missing_nemo(app_config):
+def test_missing_nemo(app_config, monkeypatch):
     from src.transcription.parakeet_transcriber import ParakeetTranscriber
-    assert "nemo" not in sys.modules
+    for m in ("nemo", "nemo.collections", "nemo.collections.asr"):
+        monkeypatch.setitem(sys.modules, m, None)
     with pytest.raises(RuntimeError, match="NeMo"):
         ParakeetTranscriber(app_config).initialize_model()
 

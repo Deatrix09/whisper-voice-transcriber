@@ -223,10 +223,12 @@ def test_sortformer_shapes_and_limit(app_config, tmp_path):
         ("SPEAKER_00", 0.0, 1.0), ("SPEAKER_01", 1.0, 2.0), ("SPEAKER_02", 2.0, 3.0)]
 
 
-def test_sortformer_missing_nemo(app_config):
+def test_sortformer_missing_nemo(app_config, monkeypatch):
     _sortformer_config(app_config)
     from src.diarization.sortformer_diarizer import SortformerDiarizer
-    assert "nemo" not in sys.modules
+    for m in ("nemo", "nemo.collections", "nemo.collections.asr",
+              "nemo.collections.asr.models"):
+        monkeypatch.setitem(sys.modules, m, None)
     with pytest.raises(RuntimeError, match="NeMo"):
         SortformerDiarizer(app_config).initialize()
 
@@ -297,10 +299,10 @@ def test_nemotron_offline_segments(app_config, tmp_path):
         ("SPEAKER_00", 0.0, 0.5), ("SPEAKER_03", 0.5, 1.0)]
 
 
-def test_nemotron_missing_transformers(app_config):
+def test_nemotron_missing_transformers(app_config, monkeypatch):
     app_config.diarization.module = "nemotron-3"
     from src.diarization.nemotron_diarizer import NemotronDiarizer
-    assert "transformers" not in sys.modules
+    monkeypatch.setitem(sys.modules, "transformers", None)
     with pytest.raises(RuntimeError, match="transformers"):
         NemotronDiarizer(app_config).initialize()
 

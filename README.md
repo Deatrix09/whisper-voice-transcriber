@@ -95,17 +95,18 @@ The transcription process uses settings from `config/config.yaml`. You can modif
 
 ### Speaker Diarization
 
-This project supports two different speaker diarization modules:
+This project supports these speaker diarization modules:
 
-1. **Pyannote.audio**: The default diarization module, which provides good speaker separation for most audio files.
-2. **NeMo**: An alternative diarization module from NVIDIA that can provide better results in some scenarios.
+1. **Nemotron-3-Diarization**: The default diarization module (open-weight, no HF token needed, up to 8 speakers).
+2. **Pyannote.audio**: Requires a Hugging Face account and API token, good speaker separation for most audio files.
+3. **Sortformer / NeMo**: Alternative NVIDIA modules (Sortformer max 4 speakers; legacy NeMo clustering).
 
 To switch between diarization modules, edit the `config/config.yaml` file:
 
 ```yaml
 diarization:
   enabled: true
-  module: "pyannote"  # Choose between "pyannote" or "nemo"
+  module: "nemotron-3"  # "nemotron-3" | "pyannote" | "sortformer" | "nemo"
   num_speakers: null  # Optional: Set number of speakers (e.g., 2). Leave as null for automatic detection
 ```
 

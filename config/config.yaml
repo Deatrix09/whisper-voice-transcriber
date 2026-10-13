@@ -42,7 +42,7 @@ asr:
 # Diarization settings
 diarization:
   enabled: true
-  module: "pyannote"  # "pyannote" | "sortformer" | "nemotron-3" | "nemo" (legacy NeMo clustering)
+  module: "nemotron-3"  # DEFAULT: "nemotron-3" (open-weight, bez HF tokenu, az 8 speakeru) | "pyannote" | "sortformer" (max 4) | "nemo" (legacy NeMo clustering)
   num_speakers: null  # Optional: Set number of speakers (e.g., 2). Leave as null for automatic detection
 
   pyannote:

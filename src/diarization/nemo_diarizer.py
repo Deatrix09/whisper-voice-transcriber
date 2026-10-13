@@ -1,3 +1,12 @@
+# Copyright (c) 2024-2026 Kleveta Lukas
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
 import os
 from typing import Dict, List, Optional, Union, Tuple
 from pydub import AudioSegment
@@ -27,7 +36,12 @@ class NemoDiarizer(BaseDiarizer):
             self.logger.info("NeMo models will be loaded on demand during diarization")
             
             # Check if CUDA is available
-            if torch.cuda.is_available() and self.config.performance.device == "cuda":
+            from src.utils.config import resolve_device
+            try:
+                eff_device = resolve_device(self.config.performance.device)
+            except ValueError:
+                eff_device = "cpu"
+            if eff_device == "cuda":
                 self.logger.info("CUDA is available and will be used for diarization")
             else:
                 self.logger.info("CUDA is not available, using CPU for diarization")
@@ -49,10 +63,13 @@ class NemoDiarizer(BaseDiarizer):
         import tempfile
         
         self.logger.info(f"Processing audio file for diarization: {audio_path}")
-        
+
+        # L04: temp_dir se dřív nikdy nemazal (leak v %TEMP% při každém běhu).
+        # Stopa pro finally-cleanup i při výjimce před vytvořením.
+        temp_dir = None
         try:
             # Create a temporary directory for manifest files
-            temp_dir = tempfile.mkdtemp()
+            temp_dir = tempfile.mkdtemp(prefix="nemo_diar_")
             self.logger.info(f"Created temporary directory: {temp_dir}")
             
             # Preprocess audio file - exactly like in diarize_audio.py
@@ -68,7 +85,11 @@ class NemoDiarizer(BaseDiarizer):
             self.logger.info(f"Output directory: {output_dir}")
             
             # Detect available device
-            device = 'cuda' if torch.cuda.is_available() and self.config.performance.device == "cuda" else 'cpu'
+            from src.utils.config import resolve_device as _resolve_device
+            try:
+                device = _resolve_device(self.config.performance.device)
+            except ValueError:
+                device = "cpu"
             self.logger.info(f"Using device: {device}")
             
             # Configuration structure exactly like diarize_audio.py
@@ -153,7 +174,13 @@ class NemoDiarizer(BaseDiarizer):
                 'asr': {
                     'model_path': 'stt_en_conformer_ctc_large',
                     'parameters': {
-                        'asr_based_vad': True,
+                        # L04: False = NeMo nestahuje/neloaduje Conformer-CTC (~1GB)
+                        # jen pro word-timestamp VAD refinement. Náš kód čte pouze
+                        # speaker RTTM, VAD dál běží přes MarbleNet (diarizer.vad).
+                        # Odpovídá standardní NeMo system-VAD cestě
+                        # (offline_diar_infer.py); ASR větev je opt-in
+                        # (offline_diar_with_asr_infer.py).
+                        'asr_based_vad': False,
                         'word_ts_anchor_offset': 0.15,
                         'ctc_decoder_params': {
                             'beam_size': 16,
@@ -194,9 +221,10 @@ class NemoDiarizer(BaseDiarizer):
             
             # Initialize diarizer - exactly like in diarize_audio.py
             self.logger.info("Initializing NeMo Neural Diarizer...")
-            diarizer = nemo_asr.models.NeuralDiarizer(cfg=diarizer_config)
-            
+            self.logger.info("ASR-based VAD is disabled (MarbleNet VAD only, no Conformer download)")
+            diarizer = None
             try:
+                diarizer = nemo_asr.models.NeuralDiarizer(cfg=diarizer_config)
                 # Run diarization
                 self.logger.info("Running diarization...")
                 diarizer.diarize()
@@ -206,6 +234,18 @@ class NemoDiarizer(BaseDiarizer):
                 import traceback
                 self.logger.error(f"Traceback: {traceback.format_exc()}")
                 # Continue with the rest of the function to try to use any output files that might have been created
+            finally:
+                # L04: VAD/Titanet/MSDD váhy pryč z VRAM hned po diarize(),
+                # ne až na konci process() (souběh s Whisper na 8GB).
+                if diarizer is not None:
+                    del diarizer
+                import gc
+                gc.collect()
+                try:
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except Exception:
+                    pass
             
             # Process results from RTTM file
             # NeMo creates RTTM files in the pred_rttms subdirectory with the processed filename
@@ -371,6 +411,16 @@ class NemoDiarizer(BaseDiarizer):
                 "speaker": "SPEAKER_0",
                 "duration": duration
             }]
+        finally:
+            # L04: temp adresář (preprocessed wav + manifest) + temp soubory
+            # uklidit na VŠECH cestách včetně early-returnů a výjimek.
+            if temp_dir:
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            try:
+                self._cleanup_temp_files()
+            except Exception:
+                pass
     
     def _consolidate_segments(self, segments: List[Dict[str, any]], gap_threshold: float = 0.5) -> List[Dict[str, any]]:
         """

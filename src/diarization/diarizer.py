@@ -1,18 +1,27 @@
-from pyannote.audio import Pipeline
+# Copyright (c) 2024-2026 Kleveta Lukas
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
 import os
 from pydub import AudioSegment
 from typing import Dict, List, Tuple
-import torch
 from src.utils.logger import setup_logger
-from torch.serialization import add_safe_globals
-from torch.torch_version import TorchVersion
-from pyannote.audio.core.task import Specifications, Problem, Resolution
 from src.diarization.diarizer_factory import DiarizationFactory
+# Pozn.: těžké pyannote/torch importy tu byly nevyužité (mrtvý kód) -
+# diarizace se vytváří přes DiarizationFactory (lazy). Odstraněno pro
+# rychlý import a funkčnost bez nainstalovaného pyannote/torchaudio.
 
 class Diarizer:
     def __init__(self, config):
         self.config = config
-        self.logger = setup_logger(__name__, config.logging.level, config.logging.file)
+        self.logger = setup_logger(__name__, config.logging.level, config.logging.file,
+                                     file_level=getattr(config.logging, "file_level", None),
+                                     console_level=getattr(config.logging, "console_level", None))
         self.diarizer = None
     
     def initialize_pipeline(self):

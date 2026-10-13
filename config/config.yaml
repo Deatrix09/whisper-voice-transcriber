@@ -1,6 +1,6 @@
 # Model settings
 model:
-  name: "large-v2"  # Choose between "tiny", "base", "small", "medium", "large-v2", "large-v3", "turbo"
+  name: "large-v3-turbo"  # FAZE 1: turbo default; fallback "tiny", "base", "small", "medium", "large-v2", "large-v3"
   language: ""  # Set to "cs" for Czech, or leave empty for automatic detection
 
 # Whisper AI Configuration
@@ -10,9 +10,9 @@ whisper:
 # Audio processing
 # Processing for big audio files (e.g., 0,5 hour) is done in chunks
 audio:
-  chunk_size: 360  # Size in seconds (6 minutes) for chunking large files
+  chunk_size: 30  # FAZE 2: 30s okna pro streaming chunking (ZÁKAZ <=10s: +3.5% WER)
   chunk_threshold_mb: 20  # Files larger than this size (in MB) will be chunked
-  chunk_overlap_sec: 0  # Overlap between chunks in seconds
+  chunk_overlap_sec: 2  # FAZE 2: 2s overlap, merge bez duplikace textu
 
 # Performance settings
 performance:
@@ -30,19 +30,37 @@ transcription:
   verbose: false
   multi_language: false
 
+# ASR settings (FAZE 4: sjednoceno; model.* zustava jako fallback)
+asr:
+  engine: "faster-whisper"  # auto|faster-whisper|parakeet (auto: jazyk z 25 -> parakeet, jinak turbo)
+  model: "large-v3-turbo"  # ma prednost pred model.name; prazdne = pouzij model.name
+  compute_type: null  # null = auto (int8_float16 CUDA / int8 CPU; bf16 v CT2 4.8.3 neni)
+  batch_size: 4  # pyannote segmentation/embedding batche; parakeet batch (doporuceno 8)
+  align_words: false  # true = word_timestamps (volitelny align krok)
+  parakeet_model: null  # null = nvidia/parakeet-tdt-0.6b-v3
+
 # Diarization settings
 diarization:
   enabled: true
-  module: "pyannote"  # Choose between "pyannote" or "nemo"
+  module: "nemotron-3"  # DEFAULT: "nemotron-3" (open-weight, bez HF tokenu, az 8 speakeru) | "pyannote" | "sortformer" (max 4) | "nemo" (legacy NeMo clustering)
   num_speakers: null  # Optional: Set number of speakers (e.g., 2). Leave as null for automatic detection
 
   pyannote:
     enabled: true
-    model: "pyannote/speaker-diarization-3.1"
-    auth_token: "***REMOVED***"
+    model: "pyannote/speaker-diarization-community-1"  # FAZE 3: CC-BY-4.0 free (NE precision-2 paid); legacy "pyannote/speaker-diarization-3.1" stále funguje
+    auth_token: "${HF_TOKEN}"  # nebo env HF_TOKEN
     min_duration_off: 0.5
-    min_cluster_size: 5
-    method: "average"
+    min_cluster_size: 5  # jen legacy 3.1 (community-1 používá VBx defaulty)
+    method: "average"  # jen legacy 3.1
+
+  sortformer:
+    enabled: true
+    model: "nvidia/diar_streaming_sortformer_4spk-v2.1"  # offline režim; LIMIT max 4 speakeři (architektura)
+    batch_size: 1
+
+  nemotron:
+    enabled: true
+    model: "nvidia/Nemotron-3-Diarization"  # přes transformers (ne NeMo); až 8 speakerů
 
   nemo:
     enabled: true

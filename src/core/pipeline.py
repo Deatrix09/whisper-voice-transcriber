@@ -1,20 +1,113 @@
+# Copyright (c) 2024-2026 Kleveta Lukas
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
 from typing import Dict, List
 import os
-from src.audio.processor import AudioProcessor
-from src.diarization.diarizer import Diarizer
-from src.transcription.transcriber import Transcriber
 from src.utils.logger import setup_logger
-import torch
+
+# Pozn. (F): torch se importuje lazy v metodách, aby `import src.core.pipeline`
+# fungoval i bez torch (testy, --help cesty). torch je v sys.modules cachován.
+
+
+def _create_diarizer(config):
+    from src.diarization.diarizer import Diarizer
+    return Diarizer(config)
+
 
 class Pipeline:
+    def _validate_diarization_config(self) -> None:
+        """P0 0.1 FAIL FAST: chybějící HF token hlas už v konstrukci,
+        ne až uprostřed diarizace (po minutách transkripce)."""
+        d = getattr(self.config, "diarization", None)
+        if not d or not getattr(d, "enabled", False):
+            return
+        if str(getattr(d, "module", "")).lower() != "pyannote":
+            return
+        py = getattr(d, "pyannote", None)
+        raw = (getattr(py, "auth_token", "") or "").strip() if py else ""
+        if raw.startswith("${"):
+            raw = ""
+        env = (os.environ.get("HF_TOKEN", "") or "").strip() or \
+              (os.environ.get("HUGGINGFACE_ACCESS_TOKEN", "") or "").strip() or \
+              (os.environ.get("HUGGING_FACE_HUB_TOKEN", "") or "").strip()
+        if not (raw or env):
+            raise ValueError(
+                "pyannote: chybí HuggingFace token - nastav HF_TOKEN v .env "
+                "(viz .env.example) nebo v prostředí.")
+
     def __init__(self, config):
+        from src.audio.processor import AudioProcessor
         self.config = config
-        self.logger = setup_logger(__name__, config.logging.level, config.logging.file)
-        
+        self.logger = setup_logger(__name__, config.logging.level, config.logging.file,
+                                     file_level=getattr(config.logging, "file_level", None),
+                                     console_level=getattr(config.logging, "console_level", None))
+
+        self._validate_diarization_config()
         self.logger.info("Initializing pipeline components...")
         self.audio_processor = AudioProcessor(config)
-        self.diarizer = Diarizer(config)
-        self.transcriber = Transcriber(config)
+        # P0 0.4 lazy: transcriber/diarizer (těžké modely) až v process_file().
+        # Umožní --validate / testy bez GPU a výměnu enginu bez přepisu pipeline.
+        self.diarizer = None
+        self.transcriber = None
+
+    def _ensure_diarizer(self):
+        if self.diarizer is None:
+            self.diarizer = _create_diarizer(self.config)
+        return self.diarizer
+
+    def _ensure_transcriber(self):
+        if self.transcriber is None:
+            from src.transcription.asr_factory import create_asr_provider
+            self.transcriber = create_asr_provider(self.config)
+        return self.transcriber
+
+    @staticmethod
+    def release_model_resources(pipeline) -> None:
+        """Uvolni těžké modely (ASR/diarizace) z RAM/VRAM. Idempotentní."""
+        import gc
+        try:
+            transcriber = getattr(pipeline, "transcriber", None)
+            unload = getattr(transcriber, "unload", None)
+            if callable(unload):
+                # P0 0.4: ASRProvider.unload() (Transcriber i ParakeetTranscriber).
+                unload()
+            elif transcriber is not None and getattr(transcriber, "model", None) is not None:
+                del transcriber.model
+                transcriber.model = None
+        except Exception:
+            pass
+        try:
+            diarizer = getattr(pipeline, "diarizer", None)
+            inner = getattr(diarizer, "diarizer", None) if diarizer is not None else None
+            if inner is not None:
+                # pyannote drží .pipeline, sortformer/nemotron drží .model
+                for attr in ("pipeline", "model"):
+                    if getattr(inner, attr, None) is not None:
+                        try:
+                            delattr(inner, attr)
+                            setattr(inner, attr, None)
+                        except Exception:
+                            pass
+                try:
+                    del diarizer.diarizer
+                except Exception:
+                    pass
+                diarizer.diarizer = None
+        except Exception:
+            pass
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
         
     def merge_diarization_with_transcription(
         self, 
@@ -30,6 +123,21 @@ class Pipeline:
             merged_results = []
             unmatched_segments = 0
             multiple_speakers = 0
+
+            # E: index diarizace pro O(log D + K log K) lookup místo O(D) scanu.
+            # Podmínka překryvu max(s,ds) < min(e,de) <=> ds < e a s < de.
+            # order[:hi] (bisect na starty) dá přesně ds < e, filtr de > s pak
+            # přesně překryv. Setřídění kandidátů zpět do původního pořadí
+            # zachovává i tie-break v max() níž (bitová shoda se starým kódem).
+            import bisect
+            order = sorted(
+                range(len(diarization_results)),
+                key=lambda k: diarization_results[k]["start"],
+            )
+            diar_starts = [diarization_results[k]["start"] for k in order]
+            by_speaker: Dict[str, List[Dict]] = {}
+            for d in diarization_results:
+                by_speaker.setdefault(d["speaker"], []).append(d)
             
             # Process segments in sequential order
             prev_segment_text = None
@@ -46,24 +154,28 @@ class Pipeline:
                 
                 prev_segment_text = segment_text
                 
-                # Find matching speakers
-                matching_speakers = [
-                    d["speaker"] for d in diarization_results
-                    if max(segment_start, d["start"]) < min(segment_end, d["end"])
-                ]
-                
+                # Find matching speakers (překryv s [segment_start, segment_end))
+                hi = bisect.bisect_left(diar_starts, segment_end)
+                cand = sorted(
+                    k for k in order[:hi]
+                    if diarization_results[k]["end"] > segment_start
+                )
+                matching_speakers = [diarization_results[k]["speaker"] for k in cand]
+
                 if not matching_speakers:
                     unmatched_segments += 1
                     speaker = "UNKNOWN"
                 elif len(matching_speakers) > 1:
                     multiple_speakers += 1
-                    # Use the speaker with the longest overlap
+                    # Use the speaker with the longest overlap.
+                    # Součet jen přes segmenty daného speakera (včetně záporných
+                    # příspěvků nepřekrývajících se) = identický výsledek jako
+                    # dřívější součet přes celé diarization_results.
                     speaker = max(
                         matching_speakers,
                         key=lambda s: sum(
                             min(segment_end, d["end"]) - max(segment_start, d["start"])
-                            for d in diarization_results
-                            if d["speaker"] == s
+                            for d in by_speaker[s]
                         )
                     )
                 else:
@@ -107,11 +219,11 @@ class Pipeline:
                 speaker_stats[speaker]["total_words"] += len(segment["text"].split())
             
             for speaker, stats in speaker_stats.items():
-                self.logger.info(f"\nSpeaker {speaker} statistics:")
-                self.logger.info(f"  - Segments: {stats['count']}")
-                self.logger.info(f"  - Total duration: {stats['total_duration']:.2f} seconds")
-                self.logger.info(f"  - Total words: {stats['total_words']}")
-                self.logger.info(f"  - Average words per segment: {stats['total_words']/stats['count']:.2f}")
+                self.logger.debug(f"Speaker {speaker} statistics:")
+                self.logger.debug(f"  - Segments: {stats['count']}")
+                self.logger.debug(f"  - Total duration: {stats['total_duration']:.2f} seconds")
+                self.logger.debug(f"  - Total words: {stats['total_words']}")
+                self.logger.debug(f"  - Average words per segment: {stats['total_words']/stats['count']:.2f}")
             
             return merged_results
             
@@ -173,6 +285,49 @@ class Pipeline:
                     
         return False
 
+    def _log_memory_summary(self, prefix: str) -> None:
+        """torch.cuda.memory_summary() do debug logu (FÁZE 4 VRAM management)."""
+        try:
+            import torch as _torch
+            if not _torch.cuda.is_available():
+                return
+            self.logger.debug(
+                f"CUDA memory_summary [{prefix}]:\n"
+                + _torch.cuda.memory_summary(abbreviated=True)
+            )
+        except Exception as e:
+            self.logger.debug(f"memory_summary nedostupné: {e}")
+
+    def _transcribe_and_diarize_parallel(
+        self, audio_path: str
+    ):
+        """Transkripce + diarizace paralelně (nezávislé větve).
+
+        Šířku řídí performance.num_workers (dřív ignorováno, L08):
+        >= 2 = 2 vlákna, jinak sekvenční fallback ve stejném pořadí jako dřív.
+        Transkripce běží v hlavním vlákně (CUDA kontext Whisperu),
+        diarizace ve workeru (GIL se uvolňuje v torch/CUDA/ffmpeg).
+        """
+        num_workers = getattr(self.config.performance, "num_workers", 0) or 0
+        diarizer = self._ensure_diarizer()
+        transcriber = self._ensure_transcriber()
+        if num_workers < 2:
+            self.logger.info("Starting diarization...")
+            diarization_results = diarizer.process(audio_path)
+            self.logger.info("Starting transcription...")
+            transcription_result = transcriber.transcribe(audio_path)
+            return transcription_result, diarization_results
+
+        from concurrent.futures import ThreadPoolExecutor
+        self.logger.info("Starting diarization + transcription in parallel...")
+        # Pozn.: při pádu transkripce `with` počká na doběh diarizace
+        # (stejná sémantika jako sekvenčně: obě větve se pokusí doběhnout).
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="wvt-pipe") as pool:
+            diar_future = pool.submit(diarizer.process, audio_path)
+            transcription_result = transcriber.transcribe(audio_path)
+            diarization_results = diar_future.result()
+        return transcription_result, diarization_results
+
     def process_file(self, audio_path: str) -> List[Dict]:
         try:
             self.logger.info(f"Starting processing of {audio_path}")
@@ -188,49 +343,67 @@ class Pipeline:
             self.logger.info(f"Audio file size: {file_size / (1024*1024):.2f} MB")
             
             # Load and preprocess audio
-            self.logger.info("Loading and preprocessing audio...")
-            waveform, sample_rate, converted_path = self.audio_processor.load_audio(audio_path)
-            
+            # Note: waveform se cíleně nedekóduje (load_waveform=False) — transkripce
+            # i diarizace čtou audio z disku samy. Šetří ~460MB RAM u 2h nahrávky (L01).
+            # FÁZE 4 stage order: STAGE 1 audio/VAD-gate -> STAGE 2 ASR+VAD chunky
+            # (paralelně STAGE 2b diarizace) -> STAGE 3 merge -> STAGE 4 output.
+            self.logger.info("STAGE 1/4: loading audio (VAD prefiltr běží ve splitu)...")
+            _, sample_rate, converted_path = self.audio_processor.load_audio(
+                audio_path, load_waveform=False
+            )
+
             # Use converted path if available
             if converted_path:
                 self.logger.info(f"Using converted WAV file: {converted_path}")
                 audio_path = converted_path
-            
+
             # Log audio properties
-            self.logger.info(f"Audio loaded: {waveform.shape}, Sample rate: {sample_rate}")
+            self.logger.info(f"Audio ready: {audio_path}, Sample rate: {sample_rate}")
             
-            if torch.cuda.is_available() and self.config.performance.device == "cuda":
+            try:
+                from src.utils.config import resolve_device as _resolve_device
+                eff_device = _resolve_device(self.config.performance.device)
+            except ValueError as e:
+                self.logger.warning(f"{e}, fallback cpu")
+                eff_device = "cpu"
+            if eff_device == "cuda":
                 self.logger.info("CUDA is available and will be used")
             else:
-                self.logger.warning("CUDA is not available, using CPU")
+                self.logger.info("Running on CPU")
             
-            # Perform diarization if enabled
+            # STAGE 2: ASR (VAD-gatované 30s chunky, model 1x) + STAGE 2b diarizace.
+            # Nezávislé větve běží paralelně, viz _transcribe_and_diarize_parallel.
             diarization_results = []
             if self.config.diarization.enabled:
-                self.logger.info("Starting diarization...")
-                diarization_results = self.diarizer.process(audio_path)
+                self.logger.info("STAGE 2/4: ASR + diarization (parallel)...")
+                transcription_result, diarization_results = (
+                    self._transcribe_and_diarize_parallel(audio_path)
+                )
                 self.logger.info(f"Diarization completed: {len(diarization_results)} segments")
-            
-            # Perform transcription
-            self.logger.info("Starting transcription...")
-            transcription_result = self.transcriber.transcribe(audio_path)
-            self.logger.info("Transcription completed")
+                self.logger.info("Transcription completed")
+            else:
+                # Perform transcription only
+                self.logger.info("STAGE 2/4: transcription only...")
+                transcription_result = self._ensure_transcriber().transcribe(audio_path)
+                self.logger.info("Transcription completed")
+            self._log_memory_summary("after-asr-diar")
             
             # Merge results if diarization is enabled
             if self.config.diarization.enabled:
-                self.logger.info("Merging diarization and transcription results...")
+                self.logger.info("STAGE 3/4: merging diarization and transcription...")
                 final_results = self.merge_diarization_with_transcription(
                     diarization_results,
                     transcription_result
                 )
             else:
-                self.logger.info("Creating results without diarization...")
+                self.logger.info("STAGE 3/4: results without diarization...")
                 final_results = [{
                     "start": segment["start"],
                     "end": segment["end"],
                     "speaker": "UNKNOWN",
                     "text": segment["text"].strip()
                 } for segment in transcription_result["segments"]]
+            self._log_memory_summary("after-merge")
             
             self.logger.info(f"Successfully processed {audio_path}")
             self.logger.info(f"Generated {len(final_results)} segments")
@@ -246,3 +419,24 @@ class Pipeline:
         except Exception as e:
             self.logger.error(f"Pipeline processing failed: {str(e)}", exc_info=True)
             raise
+        finally:
+            # STAGE 4/4: cleanup po KAŽDÉM souboru (i při pádu): temp wav/chunky
+            # (fix orphan m4a konverzí) + unload ASR modelu + CUDA cache.
+            # Další soubor model znovu nahraje (lazy) - předvídatelná VRAM.
+            try:
+                self.audio_processor.cleanup()
+            except Exception:
+                pass
+            try:
+                transcriber = getattr(self, "transcriber", None)
+                unload = getattr(transcriber, "unload", None)
+                if callable(unload):
+                    unload()
+            except Exception:
+                pass
+            try:
+                import torch as _torch
+                if _torch.cuda.is_available():
+                    _torch.cuda.empty_cache()
+            except Exception:
+                pass

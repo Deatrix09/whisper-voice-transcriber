@@ -1,269 +1,183 @@
-# Voice Transcription using Whisper AI and Pyannote.audio (OpenAI and Hugging Face)
+# Voice Transcription with faster-whisper and Speaker Diarization
 
-This project provides a Python script for transcribing audio files using OpenAI's Whisper AI model. It supports various features including speaker diarization, multiple output formats, and optimizations for long recordings.
+CLI app for transcribing audio files with [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+(CTranslate2, INT8) + speaker diarization (Nemotron-3 / pyannote / Sortformer / NeMo).
+Optimized for long recordings: streaming 30s chunks, Silero VAD pre-filter, lazy model loading.
 
+## Features
 
+- **Dual ASR engines** (`asr.engine`): `faster-whisper` (default, `large-v3-turbo`) and
+  `parakeet` (NeMo Parakeet-TDT-0.6B-v3, 25 languages incl. Czech) with `auto` router
+  and graceful fallback. Swappable via `ASRProvider` factory, no pipeline changes needed.
+- **Streaming audio pipeline**: PyAV decode to 16 kHz mono without loading the whole file
+  into RAM, 30 s chunks with 2 s overlap (chunks ≤10 s are rejected — they raise WER),
+  per-chunk timing + RTFx logs.
+- **Diarization modules** (`diarization.module`): `nemotron-3` (default, open-weight,
+  no HF token, up to 8 speakers), `pyannote` (community-1, needs HF token),
+  `sortformer` (max 4 speakers), `nemo` (legacy clustering).
+- **Evaluation**: `run_comparison.py` compares model sizes with Levenshtein similarity,
+  WER/CER/cpWER (jiwer) and RTFx timing columns.
+- **128 pytest tests**, reproducible builds (`pyproject.toml` + `uv.lock`), GPU Docker image.
 
 ## Setup
 
 ### Prerequisites
 
-1. **Chocolatey** (for Windows users):
-   ```
-    Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-   ```
-
-2. **FFmpeg**:
-   - Windows (using Chocolatey):
-     ```
-     choco install ffmpeg
-     ```
-   - macOS (using Homebrew):
-     ```
-     brew install ffmpeg
-     ```
-   - Ubuntu/Debian:
-     ```
-     sudo apt update && sudo apt install ffmpeg
-     ```
-
-3. **PyTorch**:
-   - Windows/Linux with CUDA:
-     ```
-     pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-     ```
-   - macOS:
-     ```
-     pip3 install torch torchvision torchaudio
-     ```
-
-4. **Whisper AI**:
-   ```
-   pip install -U openai-whisper
-   ```
+1. **Python 3.11** (see `pyproject.toml`: `requires-python >=3.11,<3.12`).
+2. **FFmpeg** (required for audio conversion/chunking):
+   - Windows: `choco install ffmpeg` (or `winget install ffmpeg`)
+   - macOS: `brew install ffmpeg`
+   - Ubuntu/Debian: `sudo apt update && sudo apt install ffmpeg`
+3. **NVIDIA driver with CUDA 12.x** for GPU runs (CPU works too, slower).
 
 ### Installation
 
-1. Clone this repository
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+```bash
+# Option A: uv (reproducible, recommended)
+uv sync
+
+# Option B: pip + venv
+python -m venv venv
+venv/Scripts/activate  # Windows; source venv/bin/activate on Linux
+pip install -r requirements-cuda.txt   # NVIDIA GPU (cu118 stack)
+# pip install -r requirements-cpu.txt  # CPU-only boxes / CI
+```
+
+Secrets (only needed for the `pyannote` module — Nemotron-3 default needs none):
+
+```bash
+copy .env.example .env   # Windows; cp .env.example .env on Linux
+# then put your token into .env: HF_TOKEN=<token from https://hf.co/settings/tokens>
+```
+
+Verify without heavy downloads (`--help` needs no torch):
+
+```bash
+python main.py --help            # <1 s
+python main.py --validate --config config/config.yaml   # config check, exit 0/2
+```
 
 ## Usage
 
-Place your audio files in the `data/input/` directory.
-
-Run the transcription:
-
-```
-python main.py --input <path_to_audio_file> [--config <path_to_config>] [--format <format>]
+```bash
+python main.py --input <path_to_audio> [--config config/config.yaml] [--format txt|json|subtitle]
 ```
 
-Default configuration is loaded from the `config/` directory.
+Examples:
 
-### Parameters
-
-**Required:**
-- `--input <path_to_audio_file>`: Path to the audio file you want to transcribe.
-
-**Optional:**
-- `--config <path_to_config>`: Path to custom configuration file.
-  - **Default:** "config/config.yaml"
-  - **Example:** `--config my_config.yaml`
-
-- `--format <format>`: Specifies the output format for the transcription.
-  - **Default:** Format specified in config.yaml
-  - **Choices:** "txt", "json", "subtitle"
-  - **Example:** `--format json`
-
-### Example
-
-```
+```bash
 python main.py --input data/input/example.mp3 --format txt
+python main.py --input data/input/podcast.mp3 --config config/config.yaml --format json
 ```
 
-To use a different Whisper model, edit the `model.name` setting in `config/config.yaml`.
+- `--input`: required (except with `--validate`).
+- `--config`: default `config/config.yaml`.
+- `--format`: `txt` (default from config), `json`, or `subtitle`; overrides config.
+- Output lands in `data/output/<input>_<timestamp>.<format>`.
 
-## Output
-
-- The transcribed text will be saved in the `data/output/` directory.
-
-## Configuration
-
-The transcription process uses settings from `config/config.yaml`. You can modify this file to adjust various parameters of the Whisper model, output format, and chunking size for long recordings.
-
-### Speaker Diarization
-
-This project supports two different speaker diarization modules:
-
-1. **Pyannote.audio**: The default diarization module, which provides good speaker separation for most audio files.
-2. **NeMo**: An alternative diarization module from NVIDIA that can provide better results in some scenarios.
-
-To switch between diarization modules, edit the `config/config.yaml` file:
+## Configuration (`config/config.yaml`)
 
 ```yaml
+asr:
+  engine: "faster-whisper"  # auto|faster-whisper|parakeet (auto: lang in 25 -> parakeet)
+  model: "large-v3-turbo"   # has priority over model.name; empty = use model.name
+  compute_type: null        # null = auto (int8_float16 CUDA / int8 CPU)
+  batch_size: 4             # pyannote batches; parakeet batch (8 recommended)
+  align_words: false        # true = word-level timestamps
+  parakeet_model: null      # null = nvidia/parakeet-tdt-0.6b-v3
+model:
+  name: "large-v3-turbo"   # fallback tiny/base/small/medium/large-v2/large-v3/turbo
+  language: ""              # e.g. "cs"; empty = auto-detect
+audio:
+  chunk_size: 30            # seconds; <=10 rejected (raises WER)
+  chunk_threshold_mb: 20    # files above this size are chunked
+  chunk_overlap_sec: 2
+performance:
+  device: "cuda"            # auto|cuda|cpu (auto = cuda when available)
+  num_workers: 4            # >=2 = diarization + transcription in parallel
 diarization:
   enabled: true
-  module: "pyannote"  # Choose between "pyannote" or "nemo"
-  num_speakers: null  # Optional: Set number of speakers (e.g., 2). Leave as null for automatic detection
+  module: "nemotron-3"      # nemotron-3|pyannote|sortformer|nemo (legacy)
+  num_speakers: null        # exact count or null for auto-detection
 ```
 
-#### Pyannote.audio
-- Requires a Hugging Face account and API token
-- Generally faster processing
-- Works well for most audio files
+Run `python main.py --validate --config <file>` to check a config (prints warnings,
+exit 2 on errors such as unknown module, bad chunk sizes, or wrong format).
 
-#### NeMo
-- Requires more computational resources
-- May provide better results for complex audio with multiple speakers
-- Creates detailed RTTM files in the output directory
+## Model Comparison Tool
 
-You can also specify the number of speakers if known in advance, which can improve diarization accuracy:
+Compares transcription engines/sizes on the same audio (Levenshtein + WER/CER/cpWER + RTFx):
 
-```yaml
-diarization:
-  enabled: true
-  module: "pyannote"
-  num_speakers: 2  # Set to the exact number of speakers in your audio
+```bash
+python run_comparison.py --input path/to/audio.mp3
+python run_comparison.py --input path/to/audio.mp3 --models tiny,turbo,parakeet
 ```
 
-# Model Comparison Tool
+Results go to `data/algorithm_output/<audio>/<timestamp>/`:
 
-The project includes a powerful model comparison tool that allows you to evaluate and compare the performance of different Whisper model sizes on the same audio input.
+- `levenshtein_distances.csv` / `similarity_scores.csv` — pairwise matrices
+- `wer_cer.csv` — columns `model,wer,cer,cpwer,reference` (reference = largest model)
+- `timing.csv` — columns `model,seconds,audio_seconds,rtfx`
+- `summary_report.txt` — averages, most/least similar pair, RTFx and accuracy sections
+- `text_comparisons.txt` — full texts + pairwise distances
 
-### What It Does
+## Docker (GPU)
 
-1. **Multi-Model Processing**: 
-   - Processes the same audio file through multiple Whisper models
-   - Compares: tiny, base, small, medium, large-v2, and large-v3 models
-
-2. **Comparison Metrics**:
-   - Calculates Levenshtein distance between transcriptions
-   - Generates similarity scores (0-100%) between model outputs
-   - Creates detailed comparison matrices
-
-3. **Output Analysis**:
-   - Generates CSV files with comparison matrices
-   - Creates a detailed summary report
-   - Provides visual text comparisons
-   - Shows statistics for each model's performance
-
-### Output Files
-
-The tool generates several files in `data/algorithm_output/<audio_name>/<timestamp>/`:
-- `levenshtein_distances.csv`: Raw distance scores between models
-- `similarity_scores.csv`: Normalized similarity percentages
-- `summary_report.txt`: Overall analysis and key findings
-- `text_comparisons.txt`: Detailed text comparisons with statistics
-
-### How to Run
-
-1. **Basic Usage**:
-   ```bash
-   python run_comparison.py --input path/to/audio/file.mp3
-   ```
-
-2. **With Custom Config**:
-   ```bash
-   python run_comparison.py --input path/to/audio/file.mp3 --config path/to/config.yaml
-   ```
-
-### Example Output
-
-When you run the comparison tool, you'll get output files like this:
-
-1. **summary_report.txt**:
-```
-Shrnutí srovnání modelů
-=====================
-
-Průměrné skóre podobností:
-----------------------
-tiny: 85.23%
-base: 88.45%
-small: 91.67%
-medium: 93.82%
-large-v2: 95.44%
-large-v3: 96.12%
-
-Nejvíc podobný model:
-large-v2 - large-v3
-Podobnost: 98.45%
-
-Nejvíc odlišný model:
-tiny - large-v3
-Podobnost: 82.34%
+```bash
+cp .env.example .env   # HF_TOKEN only needed for pyannote module
+docker compose build
+docker compose run --rm transcriber --input data/input/example.mp3 --format txt
+# CPU-only box: docker compose run --rm transcriber-cpu --input ... --format txt
 ```
 
-2. **text_comparisons.txt**:
-```
-Porovnání transkripcí mezi modely
-================================
+Mounts: `./data/input` (ro), `./data/output`, `hf-cache` volume. Healthcheck verifies torch CUDA.
 
-TINY
-----
-Délka textu: 1250 znaků
-Text: "Hello everyone, welcome to the podcast. Today we're going to discuss..."
+## Benchmarking (before/after on the same file)
 
-BASE
-----
-Délka textu: 1280 znaků
-Text: "Hello everyone, welcome to the podcast. Today we're going to discuss..."
-
-LARGE-V3
---------
-Délka textu: 1295 znaků
-Text: "Hello everyone, welcome to the podcast. Today we're going to discuss..."
-
-Porovnání rozdílů mezi modely
-============================
-
-tiny vs base
-Podobnost: 88.45%
-Levenshteinova vzdálenost: 145
-
-base vs large-v3
-Podobnost: 94.23%
-Levenshteinova vzdálenost: 74
+```powershell
+Measure-Command { python main.py --input data/input/example.mp3 --format txt }
+# watch the log: "Chunk done: ... RTFx=...", "VRAM [after-transcribe]", per-model timing
+nvidia-smi dmon -s mu -d 1 -o DT   # VRAM sampling in a second terminal
 ```
 
-3. **levenshtein_distances.csv**:
-```csv
-Model,tiny,base,small,medium,large-v2,large-v3
-tiny,0,145,167,189,201,215
-base,145,0,89,102,124,138
-small,167,89,0,45,67,82
-medium,189,102,45,0,34,41
-large-v2,201,124,67,34,0,18
-large-v3,215,138,82,41,18,0
+## Project Structure
+
+```
+main.py                      # CLI (--input/--config/--format/--validate)
+run_comparison.py            # model comparison (--models tiny,turbo,parakeet)
+run_multiple_configs.py      # batch runner over config/ folder
+src/
+  core/pipeline.py           # orchestration (lazy ASR/diarizer, parallel, merge)
+  audio/processor.py         # PyAV streaming, Silero VAD prefilter, 30s chunks
+  transcription/
+    base_transcriber.py      # ASRProvider interface (transcribe/unload)
+    asr_factory.py           # create_asr_provider router
+    transcriber.py           # faster-whisper engine
+    parakeet_transcriber.py  # NeMo Parakeet-TDT engine
+  diarization/               # pyannote/sortformer/nemotron-3/nemo + factory
+  utils/                     # config (validation), logger, formatters, paths
+algorithm/levenshtein_comparator.py  # similarity + WER/CER/cpWER + timing
+config/config.yaml           # default config (HF token via ${HF_TOKEN} + .env, never hardcoded)
+tests/                       # 128 pytest tests (mocked heavies + tiny smoke)
+Dockerfile.cuda / docker-compose.yml / pyproject.toml / uv.lock
 ```
 
-4. **similarity_scores.csv**:
-```csv
-Model,tiny,base,small,medium,large-v2,large-v3
-tiny,100,88.45,86.23,84.56,83.12,82.34
-base,88.45,100,92.67,91.23,90.12,89.45
-small,86.23,92.67,100,96.34,94.56,93.45
-medium,84.56,91.23,96.34,100,97.23,96.78
-large-v2,83.12,90.12,94.56,97.23,100,98.45
-large-v3,82.34,89.45,93.45,96.78,98.45,100
+## Development
+
+```bash
+python -m pytest tests/ -q
+python -m compileall -q src algorithm
 ```
 
-The tool creates these files in the following directory structure:
-```
-data/
-└── algorithm_output/
-    └── your_audio_name/
-        └── timestamp/
-            ├── levenshtein_distances.csv
-            ├── similarity_scores.csv
-            ├── summary_report.txt
-            └── text_comparisons.txt
-```
+## License
 
-This output helps you:
-- Compare accuracy between different model sizes
-- Identify which models are most similar/different
-- See detailed transcription differences
-- Make informed decisions about model selection
+Copyright (c) 2024-2026 Kleveta Lukas
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+See [LICENSE](LICENSE) for the full text. Every source file carries an
+`SPDX-License-Identifier: Apache-2.0` header.

@@ -75,6 +75,23 @@ python main.py --input data/input/podcast.mp3 --config config/config.yaml --form
 - `--format`: `txt` (default from config), `json`, or `subtitle`; overrides config.
 - Output lands in `data/output/<input>_<timestamp>.<format>`.
 
+## Graphical interface (Streamlit)
+
+Optional UI over the same Python API. The CLI commands stay as they are
+(`python main.py`, `python run_comparison.py`, `python run_multiple_configs.py`).
+
+```bash
+python -m venv venv
+venv\Scripts\activate          # Windows; source venv/bin/activate on Linux
+pip install -r requirements.txt
+```
+
+FFmpeg must be installed and on `PATH` (see Prerequisites). From the project root:
+
+```bash
+streamlit run app.py
+```
+
 ## Configuration (`config/config.yaml`)
 
 ```yaml

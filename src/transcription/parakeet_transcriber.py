@@ -1,3 +1,12 @@
+# Copyright (c) 2024-2026 Kleveta Lukas
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
 """NeMo Parakeet-TDT dual-engine (FÁZE 5). faster-whisper soubor NESAHÁ.
 
 Model: nvidia/parakeet-tdt-0.6b-v3 (600M, CC-BY-4.0, 25 jazyků vč. cs).

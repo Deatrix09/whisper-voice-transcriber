@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # P0 0.5: GPU image pro transkripci bez lokálního Pythonu.
 # Vyžaduje host s NVIDIA driverem (CUDA 12.x, pro torch cu12 kola) + nvidia-container-toolkit.
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04

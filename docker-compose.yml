@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # P0 0.5: reprodukovatelný GPU běh. .env s HF_TOKEN patří vedle compose (ne do image).
 services:
   transcriber:

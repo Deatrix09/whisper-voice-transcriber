@@ -1,3 +1,12 @@
+# Copyright (c) 2024-2026 Kleveta Lukas
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
 """P0 0.2 Závislosti: čitelné soubory, split base/cuda, pyproject+lock."""
 import os
 
@@ -69,3 +78,27 @@ def test_help_without_third_party(tmp_path):
                        cwd=REPO, timeout=60)
     assert r.returncode == 0, r.stderr[-1500:]
     assert "usage" in r.stdout.lower()
+
+
+def _dep_names(req_strings):
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+    return {canonicalize_name(Requirement(r).name) for r in req_strings}
+
+
+def test_pyproject_requirements_in_sync():
+    """Pojistka proti driftu: každá pyproject závislost musí existovat
+    v requirements.txt (+cuda/cpu trio). Verze se mohou lišit záměrně
+    (torch 2.6 cu118 vs 2.8) - hlídají se jen JMÉNA."""
+    import tomllib
+    with open(os.path.join(REPO, "pyproject.toml"), "rb") as f:
+        deps = tomllib.load(f)["project"]["dependencies"]
+    py_names = _dep_names(deps)
+    have = set()
+    for fname in ("requirements.txt", "requirements-cuda.txt", "requirements-cpu.txt"):
+        with open(os.path.join(REPO, fname), encoding="utf-8") as f:
+            reqs = [l.split("#", 1)[0].strip() for l in f.read().splitlines()]
+        reqs = [r for r in reqs if r and not r.startswith(("-r", "--"))]
+        have |= _dep_names(reqs)
+    missing = py_names - have
+    assert not missing, f"v requirements chybí: {missing}"

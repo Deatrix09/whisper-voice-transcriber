@@ -1,4 +1,6 @@
-# P0 0.2: CUDA build - pouziti: pip install -r requirements-cuda.txt
+# P0 0.2: CUDA build (aktuální produkční stack: torch 2.6+cu118 + pyannote 3.1 legacy).
+# Použití: pip install -r requirements-cuda.txt
+# Novější target stack (torch 2.8 + pyannote 4) řeší pyproject.toml + uv.lock.
 -r requirements.txt
 --extra-index-url https://download.pytorch.org/whl/cu118
 torch==2.6.0+cu118

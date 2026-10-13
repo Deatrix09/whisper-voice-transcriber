@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Audio transcription with Whisper + speaker diarization (CLI)"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 # P0 0.2: kurátorované PŘÍMÉ závislosti (tranzitivní dořeší resolver).
 # Plný freeze pro pip je v requirements.txt (+ requirements-cuda/cpu.txt).
 # POZOR: pyannote.audio 4.x vyžaduje torchaudio>=2.8 (ověřeno resolverem),

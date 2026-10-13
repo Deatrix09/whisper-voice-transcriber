@@ -1,3 +1,12 @@
+# Copyright (c) 2024-2026 Kleveta Lukas
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
 """Validační testy pro FÁZI 4: asr.* config, compute validace, batch, cleanup.
 
 faster-whisper se stubuje (stejný vzor jako FÁZE 1); CT2 validace běží

@@ -1,3 +1,12 @@
+# Copyright (c) 2024-2026 Kleveta Lukas
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
 """Validační testy pro FÁZI 3: community-1, Sortformer, Nemotron-3, factory.
 
 Těžké knihovny (pyannote modely, NeMo, transformers) se nestahují:

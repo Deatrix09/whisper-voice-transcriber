@@ -9,10 +9,11 @@ Model: nvidia/parakeet-tdt-0.6b-v3 (600M, CC-BY-4.0, 25 jazyků vč. cs).
 - Stejné atributy (config/logger/model/device + initialize_model/transcribe/
   check_ffmpeg) -> Pipeline.release_model_resources funguje beze změny.
 """
-import logging
 import time
 from typing import Dict, List, Optional
 from src.utils.logger import setup_logger
+from src.utils.config import resolve_device
+from src.transcription.base_transcriber import ASRProvider
 import os
 import subprocess
 import shutil
@@ -34,7 +35,7 @@ def supports_language(lang: Optional[str]) -> bool:
     return bool(lang) and str(lang).strip().lower() in PARAKEET_LANGS
 
 
-class ParakeetTranscriber:
+class ParakeetTranscriber(ASRProvider):
     def __init__(self, config):
         self.config = config
         self.logger = setup_logger(__name__, config.logging.level, config.logging.file,
@@ -112,12 +113,12 @@ class ParakeetTranscriber:
             if not self.check_ffmpeg():
                 raise RuntimeError("ffmpeg is required but not found. Please install ffmpeg and add it to your PATH.")
 
-            want_cuda = getattr(self.config.performance, "device", "cpu") == "cuda"
+            want = getattr(self.config.performance, "device", "cpu")
             try:
-                has_cuda = torch.cuda.is_available()
-            except Exception:
-                has_cuda = False
-            self.device = "cuda" if (want_cuda and has_cuda) else "cpu"
+                self.device = resolve_device(want)
+            except ValueError as e:
+                self.logger.warning(f"{e}, fallback cpu")
+                self.device = "cpu"
             model_id = self._model_id()
 
             self._log_vram("before-load")
@@ -270,32 +271,6 @@ class ParakeetTranscriber:
 
 
 def create_asr_transcriber(config):
-    """FÁZE 5 router: faster-whisper | parakeet | auto. Eager init + fallback.
-
-    - faster-whisper -> Transcriber (vždy).
-    - parakeet -> ParakeetTranscriber, při chybě warn + fallback Transcriber.
-    - auto: config jazyk v 25 parakeet -> parakeet (fallback FW při chybě),
-      jinak (prázdný/mimo 25) -> faster-whisper (99 jazyků, bezpečný default).
-    Vrací inicializovaný transcriber (model 1x, žádný reload mezi chunky).
-    """
-    from src.transcription.transcriber import Transcriber
-    logger = logging.getLogger("asr_router")
-    asr = getattr(config, "asr", None)
-    engine = (getattr(asr, "engine", "") or "faster-whisper").strip().lower()
-    lang = (config.model.language or "").strip().lower()
-
-    use_parakeet = (engine == "parakeet") or (engine == "auto" and supports_language(lang))
-    if engine == "auto":
-        logger.info(f"ASR router: engine=auto, lang={lang or 'auto-detect'} -> "
-                    f"{'parakeet' if use_parakeet else 'faster-whisper'}")
-    if use_parakeet:
-        try:
-            transcriber = ParakeetTranscriber(config)
-            transcriber.initialize_model()
-            return transcriber
-        except Exception as e:
-            logger.warning(f"Parakeet init selhal ({e}), fallback faster-whisper-turbo")
-
-    transcriber = Transcriber(config)
-    transcriber.initialize_model()
-    return transcriber
+    """P0 0.4: zpětná kompatibilita - deleguje do asr_factory."""
+    from src.transcription.asr_factory import create_asr_provider
+    return create_asr_provider(config)

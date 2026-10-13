@@ -16,6 +16,13 @@ def parse_arguments():
 def main():
     # Parse arguments
     args = parse_arguments()
+
+    # P0 0.1: lokální .env (HF_TOKEN) - před čtením configu.
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
     
     # Load configuration
     config = AppConfig.from_yaml(args.config)

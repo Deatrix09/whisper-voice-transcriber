@@ -2,6 +2,8 @@ import time
 import torch
 from typing import Dict, List, Optional
 from src.utils.logger import setup_logger
+from src.utils.config import resolve_device
+from src.transcription.base_transcriber import ASRProvider
 import os
 import subprocess
 import shutil
@@ -29,7 +31,7 @@ _MODEL_ALIASES = {
 }
 
 
-class Transcriber:
+class Transcriber(ASRProvider):
     def __init__(self, config):
         self.config = config
         self.logger = setup_logger(__name__, config.logging.level, config.logging.file,
@@ -60,12 +62,12 @@ class Transcriber:
             return False
 
     def _resolve_device(self) -> str:
-        want_cuda = getattr(self.config.performance, "device", "cpu") == "cuda"
+        # P0 0.3: auto|cuda|cpu (auto = cuda když je k dispozici, jinak cpu).
         try:
-            has_cuda = torch.cuda.is_available()
-        except Exception:
-            has_cuda = False
-        return "cuda" if (want_cuda and has_cuda) else "cpu"
+            return resolve_device(getattr(self.config.performance, "device", "cpu"))
+        except ValueError as e:
+            self.logger.warning(f"{e}, fallback cpu")
+            return "cpu"
 
     def _supported_compute_types(self, device: str) -> Optional[set]:
         """CT2-verifikovaná množina compute typů (4.8.3: bez bf16!)."""

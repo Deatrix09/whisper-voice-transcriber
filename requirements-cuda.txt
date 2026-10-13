@@ -1,0 +1,6 @@
+# P0 0.2: CUDA build - pouziti: pip install -r requirements-cuda.txt
+-r requirements.txt
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.6.0+cu118
+torchaudio==2.6.0+cu118
+torchvision==0.21.0+cu118

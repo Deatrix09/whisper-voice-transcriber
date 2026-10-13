@@ -18,15 +18,23 @@ class PyAnnoteDiarizer(BaseDiarizer):
         self._is_modern = False
 
     def _resolve_token(self) -> str:
-        token = (getattr(self.config.diarization.pyannote, "auth_token", "") or "").strip()
+        # P0 0.1: config nese "${HF_TOKEN}" placeholder (expandovaný už ve
+        # from_yaml) nebo prázdné -> bereme z prostředí. Pořadí: HF_TOKEN,
+        # HUGGINGFACE_ACCESS_TOKEN, HUGGING_FACE_HUB_TOKEN.
+        raw = (getattr(self.config.diarization.pyannote, "auth_token", "") or "").strip()
+        if raw.startswith("${"):
+            raw = ""  # nevyexpandovaný placeholder (chybí .env) -> jako prázdné
+        token = raw
         if not token:
-            token = (os.environ.get("HF_TOKEN", "") or "").strip() or \
-                    (os.environ.get("HUGGING_FACE_HUB_TOKEN", "") or "").strip()
+            for var in ("HF_TOKEN", "HUGGINGFACE_ACCESS_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+                token = (os.environ.get(var, "") or "").strip()
+                if token:
+                    break
         if not token:
             raise ValueError(
-                "pyannote: chybí HuggingFace token (gated model). Nastav "
-                "diarization.pyannote.auth_token v configu nebo env HF_TOKEN "
-                "(token vytvoříš na hf.co/settings/tokens + přijmi podmínky modelu)."
+                "pyannote: chybí HuggingFace token (gated model) - FAIL FAST před diarizací. "
+                "Nastav HF_TOKEN v .env (viz .env.example) nebo v prostředí; "
+                "token vytvoříš na https://hf.co/settings/tokens + přijmi podmínky modelu."
             )
         return token
 
@@ -60,6 +68,14 @@ class PyAnnoteDiarizer(BaseDiarizer):
                 raise RuntimeError(
                     "pyannote.audio není nainstalováno. Spusť: "
                     "pip install \"pyannote.audio>=4.0\" (pro community-1)."
+                ) from e
+            except Exception as e:
+                # Např. nekompatibilní torchaudio (chybějící AudioMetaData):
+                # instalace je rozbitá, ne jen chybějící.
+                raise RuntimeError(
+                    f"pyannote.audio se nepodařilo importovat ({e}). Zkontroluj "
+                    f"kompatibilní verzi: pip install \"pyannote.audio>=4.0\" "
+                    f"+ odpovídající torchaudio."
                 ) from e
 
             # Register safe globals for PyTorch 2.6+ compatibility
@@ -111,7 +127,7 @@ class PyAnnoteDiarizer(BaseDiarizer):
                     except Exception as e:
                         self.logger.warning(f"Nelze nastavit {attr}: {e}")
 
-            if torch.cuda.is_available() and self.config.performance.device == "cuda":
+            if torch.cuda.is_available() and self._effective_device() == "cuda":
                 try:
                     self.pipeline = self.pipeline.to(torch.device("cuda"))
                     self.logger.info("Diarization pipeline moved to CUDA")
@@ -125,6 +141,15 @@ class PyAnnoteDiarizer(BaseDiarizer):
         except Exception as e:
             self.logger.error(f"Failed to initialize PyAnnote diarization pipeline: {str(e)}")
             raise
+
+    def _effective_device(self) -> str:
+        """P0 0.3: auto|cuda|cpu -> cuda|cpu (neznámé = cpu + warning)."""
+        from src.utils.config import resolve_device
+        try:
+            return resolve_device(getattr(self.config.performance, "device", "cpu"))
+        except ValueError as e:
+            self.logger.warning(f"{e}, fallback cpu")
+            return "cpu"
 
     def _speaker_kwargs(self) -> dict:
         """num_speakers z configu: 4.x jako min/max hint, 3.1 jako exact."""

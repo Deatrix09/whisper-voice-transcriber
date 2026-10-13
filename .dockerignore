@@ -1,0 +1,17 @@
+# P0 0.5: co NEpatří do image (secrets, cache, lokální bordel).
+# (pyproject.toml + uv.lock schválně NEIGNORUJEME - Dockerfile je COPY pro uv sync.)
+.git/
+.gitignore
+.dexone/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+logs/
+data/output/
+data/input/
+tests/
+.env
+.env.local
+*.log

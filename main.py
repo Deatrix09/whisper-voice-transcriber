@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import sys
 from typing import List, Dict
 
 from src.utils.logger import setup_logger
@@ -20,7 +21,13 @@ def parse_arguments():
 
     parser.add_argument("--config", type=str, default="config/config.yaml", help="Path to configuration file")
 
-    parser.add_argument("--input", type=str, required=True, help="Path to input audio file")
+    parser.add_argument("--input", type=str, required=False, help="Path to input audio file (povinný kromě --validate)")
+
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="P0 0.3: jen ověř config (tisk + exit 0/2), bez transkripce"
+    )
 
     parser.add_argument(
 
@@ -38,10 +45,39 @@ def parse_arguments():
 
 
 
+def validate_config_file(path: str) -> int:
+    """P0 0.3: ověř config bez těžkých importů. Vrací exit kód (0 ok, 2 chyba)."""
+    from src.utils.config import AppConfig, ConfigError
+    try:
+        warnings = AppConfig.from_yaml(path).validate()
+    except ConfigError as e:
+        print(f"NEPLATNÝ config: {e}")
+        return 2
+    print(f"Config {path}: OK")
+    for w in warnings:
+        print(f"  warning: {w}")
+    return 0
+
+
 def main():
 
     # Parse command line arguments first so --help works without torch.
     args = parse_arguments()
+
+    if args.validate:
+        raise SystemExit(validate_config_file(args.config))
+
+    if not args.input:
+        print("main.py: error: --input je povinný (nebo použij --validate --config ...)",
+              file=sys.stderr)
+        raise SystemExit(2)
+
+    # P0 0.1: lokální .env (HF_TOKEN) - před čtením configu.
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
 
     # Heavy imports lazy (F) - až po parsingu argumentů.
     import torch
@@ -49,10 +85,12 @@ def main():
     from torch.torch_version import TorchVersion
     try:
         # Jen pro pyannote větev (safe_globals pro torch.load 2.6+).
-        # Sortformer/nemotron-only běh pyannote nepotřebuje.
+        # Sortformer/nemotron-only běh pyannote nepotřebuje. Široký except:
+        # rozbitá kombinace pyannote/torchaudio (např. chybějící AudioMetaData)
+        # nesmí shodit non-pyannote běhy.
         from pyannote.audio.core.task import Specifications, Problem, Resolution
         add_safe_globals([TorchVersion, Specifications, Problem, Resolution])
-    except ImportError:
+    except Exception:
         pass
     from src.utils.config import AppConfig
     from src.core.pipeline import Pipeline
@@ -68,6 +106,15 @@ def main():
     logger = setup_logger("main", config.logging.level, config.logging.file,
                           file_level=getattr(config.logging, "file_level", None),
                           console_level=getattr(config.logging, "console_level", None))
+
+    # P0 0.3: auto-validace configu (fatální = jasná chyba + exit 2, warnings do logu)
+    from src.utils.config import ConfigError
+    try:
+        for w in config.validate():
+            logger.warning(f"config: {w}")
+    except ConfigError as e:
+        logger.error(f"NEPLATNÝ config: {e}")
+        raise SystemExit(2)
 
     
 

@@ -11,15 +11,27 @@ def _create_diarizer(config):
     return Diarizer(config)
 
 
-def _create_transcriber(config):
-    # FÁZE 5: dual-engine router (faster-whisper | parakeet | auto).
-    # Vrací inicializovaný transcriber; při pádu parakeet init je uvnitř
-    # graceful fallback na faster-whisper. Stejné rozhraní (.transcribe/.model).
-    from src.transcription.parakeet_transcriber import create_asr_transcriber
-    return create_asr_transcriber(config)
-
-
 class Pipeline:
+    def _validate_diarization_config(self) -> None:
+        """P0 0.1 FAIL FAST: chybějící HF token hlas už v konstrukci,
+        ne až uprostřed diarizace (po minutách transkripce)."""
+        d = getattr(self.config, "diarization", None)
+        if not d or not getattr(d, "enabled", False):
+            return
+        if str(getattr(d, "module", "")).lower() != "pyannote":
+            return
+        py = getattr(d, "pyannote", None)
+        raw = (getattr(py, "auth_token", "") or "").strip() if py else ""
+        if raw.startswith("${"):
+            raw = ""
+        env = (os.environ.get("HF_TOKEN", "") or "").strip() or \
+              (os.environ.get("HUGGINGFACE_ACCESS_TOKEN", "") or "").strip() or \
+              (os.environ.get("HUGGING_FACE_HUB_TOKEN", "") or "").strip()
+        if not (raw or env):
+            raise ValueError(
+                "pyannote: chybí HuggingFace token - nastav HF_TOKEN v .env "
+                "(viz .env.example) nebo v prostředí.")
+
     def __init__(self, config):
         from src.audio.processor import AudioProcessor
         self.config = config
@@ -27,18 +39,36 @@ class Pipeline:
                                      file_level=getattr(config.logging, "file_level", None),
                                      console_level=getattr(config.logging, "console_level", None))
 
+        self._validate_diarization_config()
         self.logger.info("Initializing pipeline components...")
         self.audio_processor = AudioProcessor(config)
-        self.diarizer = _create_diarizer(config)
-        self.transcriber = _create_transcriber(config)
+        # P0 0.4 lazy: transcriber/diarizer (těžké modely) až v process_file().
+        # Umožní --validate / testy bez GPU a výměnu enginu bez přepisu pipeline.
+        self.diarizer = None
+        self.transcriber = None
+
+    def _ensure_diarizer(self):
+        if self.diarizer is None:
+            self.diarizer = _create_diarizer(self.config)
+        return self.diarizer
+
+    def _ensure_transcriber(self):
+        if self.transcriber is None:
+            from src.transcription.asr_factory import create_asr_provider
+            self.transcriber = create_asr_provider(self.config)
+        return self.transcriber
 
     @staticmethod
     def release_model_resources(pipeline) -> None:
-        """Uvolni těžké modely (Whisper/pyannote) z RAM/VRAM. Idempotentní."""
+        """Uvolni těžké modely (ASR/diarizace) z RAM/VRAM. Idempotentní."""
         import gc
         try:
             transcriber = getattr(pipeline, "transcriber", None)
-            if transcriber is not None and getattr(transcriber, "model", None) is not None:
+            unload = getattr(transcriber, "unload", None)
+            if callable(unload):
+                # P0 0.4: ASRProvider.unload() (Transcriber i ParakeetTranscriber).
+                unload()
+            elif transcriber is not None and getattr(transcriber, "model", None) is not None:
                 del transcriber.model
                 transcriber.model = None
         except Exception:
@@ -270,11 +300,13 @@ class Pipeline:
         diarizace ve workeru (GIL se uvolňuje v torch/CUDA/ffmpeg).
         """
         num_workers = getattr(self.config.performance, "num_workers", 0) or 0
+        diarizer = self._ensure_diarizer()
+        transcriber = self._ensure_transcriber()
         if num_workers < 2:
             self.logger.info("Starting diarization...")
-            diarization_results = self.diarizer.process(audio_path)
+            diarization_results = diarizer.process(audio_path)
             self.logger.info("Starting transcription...")
-            transcription_result = self.transcriber.transcribe(audio_path)
+            transcription_result = transcriber.transcribe(audio_path)
             return transcription_result, diarization_results
 
         from concurrent.futures import ThreadPoolExecutor
@@ -282,8 +314,8 @@ class Pipeline:
         # Pozn.: při pádu transkripce `with` počká na doběh diarizace
         # (stejná sémantika jako sekvenčně: obě větve se pokusí doběhnout).
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="wvt-pipe") as pool:
-            diar_future = pool.submit(self.diarizer.process, audio_path)
-            transcription_result = self.transcriber.transcribe(audio_path)
+            diar_future = pool.submit(diarizer.process, audio_path)
+            transcription_result = transcriber.transcribe(audio_path)
             diarization_results = diar_future.result()
         return transcription_result, diarization_results
 
@@ -320,14 +352,15 @@ class Pipeline:
             self.logger.info(f"Audio ready: {audio_path}, Sample rate: {sample_rate}")
             
             try:
-                import torch as _torch
-                cuda_ok = _torch.cuda.is_available()
-            except Exception:
-                cuda_ok = False
-            if cuda_ok and self.config.performance.device == "cuda":
+                from src.utils.config import resolve_device as _resolve_device
+                eff_device = _resolve_device(self.config.performance.device)
+            except ValueError as e:
+                self.logger.warning(f"{e}, fallback cpu")
+                eff_device = "cpu"
+            if eff_device == "cuda":
                 self.logger.info("CUDA is available and will be used")
             else:
-                self.logger.warning("CUDA is not available, using CPU")
+                self.logger.info("Running on CPU")
             
             # STAGE 2: ASR (VAD-gatované 30s chunky, model 1x) + STAGE 2b diarizace.
             # Nezávislé větve běží paralelně, viz _transcribe_and_diarize_parallel.
@@ -342,7 +375,7 @@ class Pipeline:
             else:
                 # Perform transcription only
                 self.logger.info("STAGE 2/4: transcription only...")
-                transcription_result = self.transcriber.transcribe(audio_path)
+                transcription_result = self._ensure_transcriber().transcribe(audio_path)
                 self.logger.info("Transcription completed")
             self._log_memory_summary("after-asr-diar")
             
@@ -379,10 +412,17 @@ class Pipeline:
             raise
         finally:
             # STAGE 4/4: cleanup po KAŽDÉM souboru (i při pádu): temp wav/chunky
-            # (fix orphan m4a konverzí) + CUDA cache. Modely schválně zůstávají
-            # nahrané pro rychlý další soubor (uvolnění jen přes release_*).
+            # (fix orphan m4a konverzí) + unload ASR modelu + CUDA cache.
+            # Další soubor model znovu nahraje (lazy) - předvídatelná VRAM.
             try:
                 self.audio_processor.cleanup()
+            except Exception:
+                pass
+            try:
+                transcriber = getattr(self, "transcriber", None)
+                unload = getattr(transcriber, "unload", None)
+                if callable(unload):
+                    unload()
             except Exception:
                 pass
             try:

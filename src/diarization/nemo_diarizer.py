@@ -27,7 +27,12 @@ class NemoDiarizer(BaseDiarizer):
             self.logger.info("NeMo models will be loaded on demand during diarization")
             
             # Check if CUDA is available
-            if torch.cuda.is_available() and self.config.performance.device == "cuda":
+            from src.utils.config import resolve_device
+            try:
+                eff_device = resolve_device(self.config.performance.device)
+            except ValueError:
+                eff_device = "cpu"
+            if eff_device == "cuda":
                 self.logger.info("CUDA is available and will be used for diarization")
             else:
                 self.logger.info("CUDA is not available, using CPU for diarization")
@@ -71,7 +76,11 @@ class NemoDiarizer(BaseDiarizer):
             self.logger.info(f"Output directory: {output_dir}")
             
             # Detect available device
-            device = 'cuda' if torch.cuda.is_available() and self.config.performance.device == "cuda" else 'cpu'
+            from src.utils.config import resolve_device as _resolve_device
+            try:
+                device = _resolve_device(self.config.performance.device)
+            except ValueError:
+                device = "cpu"
             self.logger.info(f"Using device: {device}")
             
             # Configuration structure exactly like diarize_audio.py

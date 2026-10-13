@@ -1,0 +1,45 @@
+# P0 0.5: reprodukovatelný GPU běh. .env s HF_TOKEN patří vedle compose (ne do image).
+services:
+  transcriber:
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+    image: whisper-voice-transcriber:cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./data/input:/app/data/input:ro
+      - ./data/output:/app/data/output
+      - hf-cache:/root/.cache/huggingface
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    # Args z `docker compose run` se připojí za entrypoint:
+    # docker compose run --rm transcriber --input data/input/example.mp3 --format txt
+    # CPU fallback (bez GPU): docker compose run --rm transcriber-cpu --input ... (--no-gpus? viz níže)
+
+  transcriber-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+    image: whisper-voice-transcriber:cpu
+    volumes:
+      - ./data/input:/app/data/input:ro
+      - ./data/output:/app/data/output
+      - hf-cache:/root/.cache/huggingface
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      CUDA_VISIBLE_DEVICES: ""
+
+volumes:
+  hf-cache:

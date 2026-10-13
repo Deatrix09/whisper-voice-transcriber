@@ -46,8 +46,11 @@ class NemotronDiarizer(BaseDiarizer):
             self.processor = AutoProcessor.from_pretrained(model_id)
             self.model = AutoModelForAudioFrameClassification.from_pretrained(model_id)
             self.model.eval()
-            device = "cuda" if (torch.cuda.is_available()
-                                and self.config.performance.device == "cuda") else "cpu"
+            from src.utils.config import resolve_device
+            try:
+                device = resolve_device(self.config.performance.device)
+            except ValueError:
+                device = "cpu"
             try:
                 self.model = self.model.to(torch.device(device))
                 if device == "cuda":

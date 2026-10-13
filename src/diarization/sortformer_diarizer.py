@@ -49,7 +49,12 @@ class SortformerDiarizer(BaseDiarizer):
             self.logger.info(f"Loading Sortformer model: {model_id} (max 4 speakers)")
             self.model = SortformerEncLabelModel.from_pretrained(model_id)
             self.model.eval()
-            if torch.cuda.is_available() and self.config.performance.device == "cuda":
+            from src.utils.config import resolve_device
+            try:
+                eff_device = resolve_device(self.config.performance.device)
+            except ValueError:
+                eff_device = "cpu"
+            if eff_device == "cuda":
                 try:
                     self.model = self.model.to(torch.device("cuda"))
                     self.logger.info("Sortformer model moved to CUDA")

@@ -48,7 +48,7 @@ diarization:
   pyannote:
     enabled: true
     model: "pyannote/speaker-diarization-community-1"  # FAZE 3: CC-BY-4.0 free (NE precision-2 paid); legacy "pyannote/speaker-diarization-3.1" stále funguje
-    auth_token: "***REMOVED***"  # nebo env HF_TOKEN
+    auth_token: "${HF_TOKEN}"  # nebo env HF_TOKEN
     min_duration_off: 0.5
     min_cluster_size: 5  # jen legacy 3.1 (community-1 používá VBx defaulty)
     method: "average"  # jen legacy 3.1

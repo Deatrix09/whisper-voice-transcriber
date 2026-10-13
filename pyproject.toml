@@ -1,0 +1,44 @@
+[project]
+name = "whisper-voice-transcriber"
+version = "0.1.0"
+description = "Audio transcription with Whisper + speaker diarization (CLI)"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { text = "MIT" }
+# P0 0.2: kurátorované PŘÍMÉ závislosti (tranzitivní dořeší resolver).
+# Plný freeze pro pip je v requirements.txt (+ requirements-cuda/cpu.txt).
+# POZOR: pyannote.audio 4.x vyžaduje torchaudio>=2.8 (ověřeno resolverem),
+# proto torch==2.8.0 (PyPI default kola = CUDA12). Původní cu118 stack
+# (torch 2.6) funguje jen s pyannote 3.1 legacy větví - viz requirements-cuda.txt.
+dependencies = [
+    "torch==2.8.0",
+    "torchaudio==2.8.0",
+    "faster-whisper==1.2.1",
+    "pyannote.audio>=4.0",
+    "numpy>=1.26",  # 4.x resolver si vybere kompatibilní (základní API stabilní)
+    "pandas>=2.2",  # 4.x resolver si vybere kompatibilní (DataFrame API stabilní)
+    "PyYAML>=6.0",
+    "python-dotenv==1.2.2",
+    "rapidfuzz>=3.0.0",
+    "jiwer>=4.0",
+    "soundfile>=0.13.1",  # pyannote 4.x vyžaduje >=0.13.1 (resolver)
+    "pydub==0.25.1",
+    "librosa==0.10.2.post1",
+    "noisereduce==3.0.3",
+    "omegaconf==2.3.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+# Legacy NeMo clustering větev (těžké, Linux-only typicky):
+nemo = ["nemo-toolkit[asr]"]
+
+[project.scripts]
+whisper-transcribe = "main:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = false

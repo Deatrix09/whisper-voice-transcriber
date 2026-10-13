@@ -38,7 +38,7 @@ diarization:
   pyannote:
     enabled: true
     model: "pyannote/speaker-diarization-3.1"  # As requested, keeping this unchanged
-    auth_token: "***REMOVED***"
+    auth_token: "${HF_TOKEN}"
     min_duration_off: 0.3
     min_cluster_size: 4
     method: "average"

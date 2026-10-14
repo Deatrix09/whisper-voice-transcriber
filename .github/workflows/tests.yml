@@ -41,9 +41,4 @@ jobs:
         run: python -m compileall -q src algorithm main.py app.py
 
       - name: Run tests
-        run: python -m pytest tests/ -q --deselect tests/test_faster_transcriber.py::test_real_tiny_smoke
-
-      # Real faster-whisper tiny model in its own process: after a real CTranslate2 run,
-      # a later librosa/soxr import in the same pytest process aborts (native lib clash).
-      - name: Smoke test (real tiny model)
-        run: python -m pytest tests/test_faster_transcriber.py::test_real_tiny_smoke -q
+        run: python -m pytest tests/ -q

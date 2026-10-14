@@ -31,19 +31,32 @@ Optimized for long recordings: streaming 30s chunks, Silero VAD pre-filter, lazy
    - Windows: `choco install ffmpeg` (or `winget install ffmpeg`)
    - macOS: `brew install ffmpeg`
    - Ubuntu/Debian: `sudo apt update && sudo apt install ffmpeg`
-3. **NVIDIA driver with CUDA 12.x** for GPU runs (CPU works too, slower).
+3. **NVIDIA GPU driver supporting CUDA 12.6** for GPU runs (CPU works too, slower).
+   PyTorch is installed from the CUDA 12.6 wheel index, because faster-whisper
+   (CTranslate2) needs the CUDA 12 cuBLAS/cuDNN libraries.
 
 ### Installation
 
 ```bash
-# Option A: uv (reproducible, recommended)
-uv sync
+# Option A: uv (reproducible, recommended) - exact versions from uv.lock
+uv sync                     # CLI
+uv sync --extra ui          # + Streamlit UI
+uv sync --extra test        # + pytest
 
-# Option B: pip + venv
+# Option B: pip + venv (requirements*.txt are generated from uv.lock)
 python -m venv venv
 venv/Scripts/activate  # Windows; source venv/bin/activate on Linux
-pip install -r requirements-cuda.txt   # NVIDIA GPU (cu118 stack)
+pip install -r requirements-cuda.txt   # NVIDIA GPU (CUDA 12.6 torch wheels)
 # pip install -r requirements-cpu.txt  # CPU-only boxes / CI
+```
+
+Optional NeMo engines (`parakeet` ASR, `sortformer` and legacy `nemo` diarization)
+are **not** part of the lockfile: `nemo-toolkit` 3.0 pins `lightning<=2.4.0` and
+`hydra-core<=1.3.2`, versions with known security advisories. Install it only if
+you need these modules, and load only models and configs from sources you trust:
+
+```bash
+pip install "nemo-toolkit[asr]"   # typically Linux + CUDA
 ```
 
 Secrets (only needed for the `pyannote` module — Nemotron-3 default needs none):
@@ -83,13 +96,8 @@ python main.py --input data/input/podcast.mp3 --config config/config.yaml --form
 Optional UI over the same Python API. The CLI commands stay as they are
 (`python main.py`, `python run_comparison.py`, `python run_multiple_configs.py`).
 
-```bash
-python -m venv venv
-venv\Scripts\activate          # Windows; source venv/bin/activate on Linux
-pip install -r requirements.txt
-```
-
-FFmpeg must be installed and on `PATH` (see Prerequisites). From the project root:
+Streamlit is included in `requirements*.txt` (pip) and in the `ui` extra
+(`uv sync --extra ui`). FFmpeg must be installed and on `PATH` (see Prerequisites). From the project root:
 
 ```bash
 streamlit run app.py

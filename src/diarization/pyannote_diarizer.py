@@ -182,6 +182,31 @@ class PyAnnoteDiarizer(BaseDiarizer):
             return regular
         return diarization  # legacy Annotation z 3.1
 
+    _DECODER_ERROR_HINTS = ("audiodecoder", "torchcodec", "ffmpeg")
+
+    def _run_pipeline(self, wav_path: str):
+        """Pipeline nad cestou k souboru (pyannote 4 dekóduje přes torchcodec, šetří RAM).
+
+        Bez torchcodec / sdílených FFmpeg knihoven (typicky Windows) fallback:
+        WAV (16 kHz mono z _ensure_wav_format) načtený přes soundfile do paměti.
+        """
+        kwargs = self._speaker_kwargs()
+        try:
+            return self.pipeline(wav_path, **kwargs)
+        except Exception as e:
+            text = f"{type(e).__name__}: {e}".lower()
+            if not any(h in text for h in self._DECODER_ERROR_HINTS):
+                raise
+            self.logger.warning(
+                f"pyannote nemůže dekódovat soubor ({e}); fallback na waveform v paměti"
+            )
+            import soundfile as sf
+            data, sample_rate = sf.read(wav_path, dtype="float32", always_2d=True)
+            waveform = torch.from_numpy(data.T.copy())  # (channel, time)
+            return self.pipeline(
+                {"waveform": waveform, "sample_rate": sample_rate}, **kwargs
+            )
+
     def process(self, audio_path: str) -> List[Dict[str, any]]:
         try:
             if self.pipeline is None:
@@ -194,11 +219,12 @@ class PyAnnoteDiarizer(BaseDiarizer):
             
             # Run diarization
             self.logger.info("Running PyAnnote diarization pipeline...")
-            diarization = self.pipeline(wav_audio_path, **self._speaker_kwargs())
-            
-            # Clean up temporary file if needed
-            if wav_audio_path != audio_path:
-                self._cleanup_temp_file(wav_audio_path)
+            try:
+                diarization = self._run_pipeline(wav_audio_path)
+            finally:
+                # Clean up temporary file if needed
+                if wav_audio_path != audio_path:
+                    self._cleanup_temp_file(wav_audio_path)
 
             annotation = self._select_annotation(diarization)
             results = []

@@ -34,7 +34,11 @@ jobs:
           uv export --frozen --no-hashes --no-emit-project --extra test -o requirements-lock.txt
           # CUDA torch stack from the lock is replaced by the CPU build of the same version.
           grep -vE '^(torch==|torchaudio==|triton==|nvidia-)' requirements-lock.txt > requirements-ci.txt
-          uv pip install --system "torch==2.8.0" "torchaudio==2.8.0" --index-url https://download.pytorch.org/whl/cpu
+          # torch/torchaudio verze z locku (bez +cu126 suffixu) -> CPU kola stejné verze
+          TORCH=$(grep -m1 -oE '^torch==[0-9.]+' requirements-lock.txt)
+          TORCHAUDIO=$(grep -m1 -oE '^torchaudio==[0-9.]+' requirements-lock.txt)
+          echo "Installing $TORCH $TORCHAUDIO (CPU)"
+          uv pip install --system "$TORCH" "$TORCHAUDIO" --index-url https://download.pytorch.org/whl/cpu
           uv pip install --system -r requirements-ci.txt
 
       - name: Compile check

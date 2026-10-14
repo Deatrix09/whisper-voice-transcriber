@@ -260,7 +260,11 @@ class LevenshteinComparator:
             temp_processor = AudioProcessor(self.config)
             if audio_path.lower().endswith('.m4a'):
                 self.logger.info(f"Converting M4A file once for all models")
-                _, _, converted_path = temp_processor.load_audio(audio_path)
+                # Jen konverze m4a->wav, waveform netřeba (a torchaudio.load by od 2.9
+                # vyžadoval torchcodec + sdílené FFmpeg knihovny).
+                _, _, converted_path = temp_processor.load_audio(
+                    audio_path, load_waveform=False
+                )
                 if converted_path:
                     audio_path = converted_path
                     self.logger.info(f"Using converted WAV file: {audio_path}")

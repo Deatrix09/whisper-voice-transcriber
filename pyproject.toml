@@ -19,12 +19,13 @@ classifiers = [
 ]
 # P0 0.2: kurátorované PŘÍMÉ závislosti (tranzitivní dořeší resolver).
 # Plný freeze pro pip je v requirements.txt (+ requirements-cuda/cpu.txt).
-# POZOR: pyannote.audio 4.x vyžaduje torchaudio>=2.8 (ověřeno resolverem),
-# proto torch==2.8.0 (PyPI default kola = CUDA12). Původní cu118 stack
-# (torch 2.6) funguje jen s pyannote 3.1 legacy větví - viz requirements-cuda.txt.
+# torch 2.14.1 (bezpečnostní opravy) + torchaudio 2.11.0 (poslední vydaná, funguje
+# s torch 2.14) + torchcodec 0.17 (vyžaduje torch>=2.11). Torch se bere z CUDA 12.6
+# indexu (viz [tool.uv.sources]): PyPI kola torch 2.14 jsou CUDA 13, ale CTranslate2
+# (faster-whisper) potřebuje CUDA 12 knihovny (cuBLAS 12 + cuDNN 9).
 dependencies = [
-    "torch==2.8.0",
-    "torchaudio==2.8.0",
+    "torch==2.14.1",
+    "torchaudio==2.11.0",
     "faster-whisper==1.2.1",
     "pyannote.audio>=4.0",
     "numpy>=1.26",  # 4.x resolver si vybere kompatibilní (základní API stabilní)
@@ -47,8 +48,11 @@ Issues = "https://github.com/Deatrix09/whisper-voice-transcriber/issues"
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
-# Legacy NeMo clustering větev (těžké, Linux-only typicky):
-nemo = ["nemo-toolkit[asr]"]
+# Volitelné grafické rozhraní: streamlit run app.py
+ui = ["streamlit>=1.39"]
+# NeMo (Parakeet ASR, Sortformer, legacy NeMo diarizace) záměrně NENÍ extra:
+# nemo-toolkit 3.0.0 pinuje lightning<=2.4.0 a hydra-core<=1.3.2 (známé CVE)
+# a uv.lock by je pak vynutil všem. Instalace zvlášť: viz README.
 
 [project.scripts]
 whisper-transcribe = "main:main"
@@ -59,3 +63,17 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv]
 package = false
+# Bezpečnostní minima tranzitivních závislostí (Dependabot advisories).
+constraint-dependencies = [
+    "lightning>=2.6.6",
+    "fsspec>=2026.6.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126", marker = "sys_platform != 'darwin'" }]
+torchaudio = [{ index = "pytorch-cu126", marker = "sys_platform != 'darwin'" }]

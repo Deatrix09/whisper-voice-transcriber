@@ -172,6 +172,42 @@ def test_token_env_fallback(app_config, tmp_path, fake_pipeline, monkeypatch):
     assert fake_pipeline["from"]["kw"] == {"token": "env-tok"}
 
 
+def _fail_on_path(monkeypatch, exc):
+    """Pipeline(cesta) selže jako pyannote 4 bez torchcodec; dict waveform projde."""
+    Fake = sys.modules["pyannote.audio"].Pipeline
+    orig = Fake.__call__
+
+    def call(self, wav, **kw):
+        if isinstance(wav, str):
+            raise exc
+        return orig(self, wav, **kw)
+
+    monkeypatch.setattr(Fake, "__call__", call)
+
+
+def test_decoder_missing_falls_back_to_waveform(app_config, tmp_path, fake_pipeline, monkeypatch):
+    _pyannote_config(app_config, "pyannote/speaker-diarization-community-1", token="t")
+    _fail_on_path(monkeypatch, NameError("name 'AudioDecoder' is not defined"))
+    from conftest import make_wav
+    from src.diarization.pyannote_diarizer import PyAnnoteDiarizer
+    wav = make_wav(tmp_path / "f.wav", seconds=0.5)
+    out = PyAnnoteDiarizer(app_config).process(str(wav))
+    arg = fake_pipeline["call"]["wav"]
+    assert arg["sample_rate"] == 16000
+    assert arg["waveform"].shape == (1, 8000)  # (channel, time), 0.5 s @ 16 kHz
+    assert [(s["start"], s["end"]) for s in out] == [(0.0, 1.0), (1.0, 2.0)]
+
+
+def test_other_pipeline_errors_propagate(app_config, tmp_path, fake_pipeline, monkeypatch):
+    _pyannote_config(app_config, "pyannote/speaker-diarization-community-1", token="t")
+    _fail_on_path(monkeypatch, RuntimeError("CUDA out of memory"))
+    from conftest import make_wav
+    from src.diarization.pyannote_diarizer import PyAnnoteDiarizer
+    wav = make_wav(tmp_path / "g.wav", seconds=0.5)
+    with pytest.raises(RuntimeError, match="out of memory"):
+        PyAnnoteDiarizer(app_config).process(str(wav))
+
+
 # ---------- sortformer ----------
 
 def _nemo_stub(captured, raw):

@@ -20,7 +20,7 @@ ideas and pull requests are all welcome.
 ```bash
 git clone https://github.com/<your-user>/whisper-voice-transcriber.git
 cd whisper-voice-transcriber
-uv sync --extra test            # or: python -m venv venv && pip install -r requirements-cpu.txt pytest
+uv sync --extra test --extra ui # or: python -m venv venv && pip install -r requirements-cpu.txt pytest
 ```
 
 You also need **FFmpeg** on `PATH` (see the README). A GPU is not required for development:

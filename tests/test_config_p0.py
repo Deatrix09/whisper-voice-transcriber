@@ -61,7 +61,8 @@ def test_unknown_model_is_warning_not_fatal(tmp_path):
     assert any("future-model-xl" in w for w in warnings)
 
 
-def test_device_validation(tmp_path):
+def test_device_validation(tmp_path, monkeypatch):
+    import torch
     from src.utils.config import AppConfig, ConfigError, resolve_device
     data = _base_cfg()
     data["performance"]["device"] = "quantum"
@@ -69,8 +70,14 @@ def test_device_validation(tmp_path):
         AppConfig.from_yaml(_write(tmp_path, data)).validate()
     data["performance"]["device"] = "auto"
     assert AppConfig.from_yaml(_write(tmp_path, data)).validate() is not None
-    assert resolve_device("auto") == "cpu"  # tu není CUDA
+    # nezávisle na HW stroje, kde testy běží
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    assert resolve_device("auto") == "cpu"
     assert resolve_device("cuda") == "cpu"  # fallback bez pádu
+    assert resolve_device("cpu") == "cpu"
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    assert resolve_device("auto") == "cuda"
+    assert resolve_device("cuda") == "cuda"
     assert resolve_device("cpu") == "cpu"
     with pytest.raises(ValueError):
         resolve_device("quantum")

@@ -1,141 +1,549 @@
-# P0 0.2: pip/legacy cesta (plný freeze vč. extras). Zdroj pravdy pro uv/Docker
-# je pyproject.toml + uv.lock. Torch trio je záměrně MIMO tento soubor:
-# viz requirements-cuda.txt (cu118) / requirements-cpu.txt. Nemazat - pip
-# uživatelé a run_multiple_configs prostredi jedou přes tyto soubory.
-aiohttp==3.9.5
-aiosignal==1.3.1
-alembic==1.13.2
+# Generováno z uv.lock - NEUPRAVOVAT RUČNĚ. Zdroj pravdy je pyproject.toml + uv.lock.
+# Přegenerování:
+#   uv export --frozen --no-hashes --no-emit-project --no-header --extra ui \
+#     | grep -vE '^(torch|torchaudio|triton)==|^nvidia-' > requirements.txt
+# Torch se instaluje přes requirements-cuda.txt (GPU) nebo requirements-cpu.txt (CPU),
+# které tento soubor načítají přes -r.
+aiohappyeyeballs==2.7.1
+    # via aiohttp
+aiohttp==3.14.5
+    # via fsspec
+aiosignal==1.4.0
+    # via aiohttp
+alembic==1.20.0
+    # via optuna
+altair==6.3.0
+    # via streamlit
+annotated-doc==0.0.5
+    # via typer
 antlr4-python3-runtime==4.9.3
+    # via omegaconf
+anyio==4.15.1
+    # via
+    #   httpx2
+    #   starlette
+    #   streamlit
 asteroid-filterbanks==0.4.0
-asttokens==2.4.1
-attrs==23.2.0
-audioread==3.0.1
-certifi==2024.6.2
-cffi==1.16.0
-charset-normalizer==3.3.2
-click==8.1.7
-colorama==0.4.6
-colorlog==6.8.2
-comm==0.2.2
-contourpy==1.2.1
+    # via pyannote-audio
+attrs==26.1.0
+    # via
+    #   aiohttp
+    #   jsonschema
+    #   referencing
+audioread==3.1.0
+    # via librosa
+av==18.1.0
+    # via faster-whisper
+certifi==2026.7.22
+    # via requests
+cffi==2.1.1
+    # via soundfile
+charset-normalizer==3.5.2
+    # via requests
+click==8.5.0
+    # via
+    #   huggingface-hub
+    #   jiwer
+    #   streamlit
+    #   uvicorn
+cloudpickle==3.1.2
+    # via joblib
+colorama==0.4.6 ; sys_platform == 'win32'
+    # via
+    #   colorlog
+    #   tqdm
+    #   typer
+colorlog==6.12.0
+    # via optuna
+contourpy==1.3.3
+    # via matplotlib
+ctranslate2==4.8.3
+    # via faster-whisper
+cuda-bindings==12.9.9 ; sys_platform == 'linux'
+    # via torch
+cuda-pathfinder==1.8.3 ; sys_platform == 'linux'
+    # via cuda-bindings
+cuda-toolkit==12.6.3 ; sys_platform == 'linux'
+    # via torch
 cycler==0.12.1
-debugpy==1.8.1
-decorator==5.1.1
-docopt==0.6.2
-einops==0.8.0
-executing==2.0.1
-filelock==3.15.4
-fonttools==4.53.0
-frozenlist==1.4.1
-fsspec==2024.6.1
-greenlet==3.0.3
-huggingface-hub==0.23.4
-HyperPyYAML==1.2.2
-idna==3.7
-intel-openmp==2021.4.0
-ipykernel==6.29.4
-ipython==8.23.0
-jedi==0.19.1
-Jinja2==3.1.4
-joblib==1.4.2
-julius==0.2.7
-jupyter_client==8.6.1
-jupyter_core==5.7.2
-kiwisolver==1.4.5
-langdetect==1.0.9
-lazy_loader==0.4
+    # via matplotlib
+decorator==5.3.1
+    # via librosa
+einops==0.8.2
+    # via pyannote-audio
+faster-whisper==1.2.1
+    # via whisper-voice-transcriber
+filelock==4.1.1
+    # via
+    #   huggingface-hub
+    #   pyannote-pipeline
+    #   torch
+flatbuffers==25.12.19
+    # via onnxruntime
+fonttools==4.66.1
+    # via matplotlib
+frozenlist==1.8.0
+    # via
+    #   aiohttp
+    #   aiosignal
+fsspec==2026.9.0
+    # via
+    #   huggingface-hub
+    #   lightning
+    #   pytorch-lightning
+    #   torch
+googleapis-common-protos==1.75.5
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+grpcio==1.84.0
+    # via opentelemetry-exporter-otlp-proto-grpc
+h11==0.16.0
+    # via
+    #   httpcore2
+    #   uvicorn
+hf-xet==1.7.0 ; platform_machine == 'AMD64' or platform_machine == 'ARM64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
+    # via huggingface-hub
+httpcore2==2.13.1 ; sys_platform != 'emscripten'
+    # via httpx2
+httpx2==2.13.1
+    # via huggingface-hub
+huggingface-hub==2.2.0
+    # via
+    #   faster-whisper
+    #   pyannote-audio
+    #   tokenizers
+    #   transformers
+idna==3.20
+    # via
+    #   anyio
+    #   httpx2
+    #   requests
+    #   yarl
+itsdangerous==2.2.0
+    # via streamlit
+jinja2==3.1.6
+    # via
+    #   altair
+    #   pydeck
+    #   torch
+jiwer==4.0.0
+    # via whisper-voice-transcriber
+joblib==1.6.0
+    # via
+    #   librosa
+    #   noisereduce
+    #   scikit-learn
+jsonschema==4.26.0
+    # via altair
+jsonschema-specifications==2025.9.1
+    # via jsonschema
+julius==0.2.8
+    # via torch-audiomentations
+kiwisolver==1.5.1
+    # via matplotlib
+lazy-loader==0.6
+    # via librosa
 librosa==0.10.2.post1
-lightning==2.3.1
-lightning-utilities==0.11.3.post0
-llvmlite==0.43.0
-Mako==1.3.5
-markdown-it-py==3.0.0
-MarkupSafe==2.1.5
-matplotlib==3.9.0
-matplotlib-inline==0.1.7
+    # via whisper-voice-transcriber
+lightning==2.6.6
+    # via pyannote-audio
+lightning-utilities==0.15.3
+    # via
+    #   lightning
+    #   pytorch-lightning
+    #   torchmetrics
+llvmlite==0.50.0
+    # via numba
+mako==1.4.3
+    # via alembic
+markdown-it-py==4.2.0
+    # via rich
+markupsafe==3.0.4
+    # via
+    #   jinja2
+    #   mako
+matplotlib==3.11.2
+    # via
+    #   noisereduce
+    #   pyannote-audio
 mdurl==0.1.2
-mkl==2021.4.0
-more-itertools==10.3.0
-mplcursors==0.5.3
+    # via markdown-it-py
 mpmath==1.3.0
-msgpack==1.0.8
-multidict==6.0.5
-nest-asyncio==1.6.0
-networkx==3.3
+    # via sympy
+msgpack==1.2.3
+    # via librosa
+multidict==7.1.0
+    # via
+    #   aiohttp
+    #   yarl
+narwhals==2.27.1
+    # via
+    #   altair
+    #   scikit-learn
+networkx==3.6.1
+    # via torch
 noisereduce==3.0.3
-numba==0.60.0
-numpy==1.26.4
+    # via whisper-voice-transcriber
+numba==0.68.0
+    # via librosa
+numpy==2.4.6
+    # via
+    #   asteroid-filterbanks
+    #   contourpy
+    #   ctranslate2
+    #   librosa
+    #   matplotlib
+    #   noisereduce
+    #   numba
+    #   onnxruntime
+    #   optuna
+    #   pandas
+    #   pyannote-core
+    #   pyannote-metrics
+    #   pydeck
+    #   pytorch-metric-learning
+    #   scikit-learn
+    #   scipy
+    #   soundfile
+    #   soxr
+    #   streamlit
+    #   torchmetrics
+    #   transformers
+    #   whisper-voice-transcriber
+    # via
+    #   cuda-toolkit
+    #   nvidia-cudnn-cu12
+    #   nvidia-cusolver-cu12
+    # via cuda-toolkit
+    # via cuda-toolkit
+    # via cuda-toolkit
+    # via torch
+    # via cuda-toolkit
+    # via cuda-toolkit
+    # via cuda-toolkit
+    # via cuda-toolkit
+    # via
+    #   cuda-toolkit
+    #   nvidia-cusolver-cu12
+    # via torch
+    # via torch
+    # via
+    #   nvidia-cufft-cu12
+    #   nvidia-cusolver-cu12
+    #   nvidia-cusparse-cu12
+    #   torch
+    # via torch
+    # via cuda-toolkit
 omegaconf==2.3.0
-faster-whisper==1.2.1  # FAZE 1: CTranslate2 misto openai-whisper
-optuna==3.6.1
-packaging==24.1
-pandas==2.2.2
-parso==0.8.4
-pillow==10.4.0
-platformdirs==4.2.2
-pooch==1.8.2
-primePy==1.3
-prompt-toolkit==3.0.43
-protobuf==5.27.2
-psutil==5.9.8
-pure-eval==0.2.2
-pyannote.audio>=4.0  # FAZE 3: community-1 vyzaduje pyannote.audio 4.x (satellites doresi pip)
-pyannote.core==5.0.0
-pyannote.database==5.1.0
-pyannote.metrics==3.2.1
-pyannote.pipeline==3.0.1
-pycparser==2.22
+    # via whisper-voice-transcriber
+onnxruntime==1.31.0
+    # via faster-whisper
+opentelemetry-api==1.45.1
+    # via
+    #   opentelemetry-exporter-http-transport
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+    #   pyannote-audio
+opentelemetry-exporter-http-transport==0.66b1
+    # via opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp==1.45.1
+    # via pyannote-audio
+opentelemetry-exporter-otlp-common==0.66b1
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-common==1.45.1
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-grpc==1.45.1
+    # via opentelemetry-exporter-otlp
+opentelemetry-exporter-otlp-proto-http==1.45.1
+    # via opentelemetry-exporter-otlp
+opentelemetry-proto==1.45.1
+    # via
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.45.1
+    # via
+    #   opentelemetry-exporter-otlp-common
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   pyannote-audio
+opentelemetry-semantic-conventions==0.66b1
+    # via opentelemetry-sdk
+optuna==5.0.0
+    # via pyannote-pipeline
+packaging==24.2
+    # via
+    #   altair
+    #   huggingface-hub
+    #   lazy-loader
+    #   lightning
+    #   lightning-utilities
+    #   matplotlib
+    #   onnxruntime
+    #   optuna
+    #   pooch
+    #   pytorch-lightning
+    #   streamlit
+    #   torch-pitch-shift
+    #   torchmetrics
+    #   transformers
+pandas==3.0.6
+    # via
+    #   pyannote-core
+    #   pyannote-database
+    #   pyannote-metrics
+    #   streamlit
+    #   whisper-voice-transcriber
+pillow==12.3.0
+    # via
+    #   matplotlib
+    #   streamlit
+platformdirs==4.13.0
+    # via pooch
+pooch==1.9.0
+    # via librosa
+primepy==1.3
+    # via torch-pitch-shift
+propcache==0.5.4
+    # via
+    #   aiohttp
+    #   yarl
+protobuf==7.36.2
+    # via
+    #   googleapis-common-protos
+    #   onnxruntime
+    #   opentelemetry-proto
+    #   streamlit
+pyannote-audio==4.0.7
+    # via whisper-voice-transcriber
+pyannote-core==6.0.1
+    # via
+    #   pyannote-audio
+    #   pyannote-database
+    #   pyannote-metrics
+    #   pyannote-pipeline
+pyannote-database==6.1.1
+    # via
+    #   pyannote-audio
+    #   pyannote-metrics
+    #   pyannote-pipeline
+pyannote-metrics==4.1
+    # via pyannote-audio
+pyannote-pipeline==4.0.0
+    # via pyannote-audio
+pyannoteai-sdk==0.4.0
+    # via pyannote-audio
+pyarrow==26.0.0
+    # via streamlit
+pycparser==3.11 ; implementation_name != 'PyPy'
+    # via cffi
+pydeck==0.9.3
+    # via streamlit
 pydub==0.25.1
-Pygments==2.18.0
-pyparsing==3.1.2
+    # via whisper-voice-transcriber
+pygments==2.21.0
+    # via rich
+pyparsing==3.3.3
+    # via matplotlib
 python-dateutil==2.9.0.post0
-pytorch-lightning==2.3.1
-pytorch-metric-learning==2.5.0
-python-dotenv==1.2.2  # P0 0.1: .env s HF_TOKEN
-pytz==2024.1
-pywin32==306
-PyYAML==6.0.1
-pyzmq==26.0.2
-regex==2024.5.15
-requests==2.32.3
-rich==13.7.1
-ruamel.yaml==0.18.6
-ruamel.yaml.clib==0.2.8
-scikit-learn==1.5.1
-scipy==1.14.0
-semver==3.0.2
-sentencepiece==0.2.0
+    # via
+    #   matplotlib
+    #   pandas
+python-dotenv==1.2.2
+    # via whisper-voice-transcriber
+python-multipart==0.0.32
+    # via streamlit
+pytorch-lightning==2.6.6
+    # via lightning
+pytorch-metric-learning==2.9.0
+    # via pyannote-audio
+pyyaml==6.0.3
+    # via
+    #   ctranslate2
+    #   huggingface-hub
+    #   lightning
+    #   omegaconf
+    #   optuna
+    #   pyannote-database
+    #   pyannote-pipeline
+    #   pytorch-lightning
+    #   transformers
+    #   whisper-voice-transcriber
+rapidfuzz==3.14.6
+    # via
+    #   jiwer
+    #   whisper-voice-transcriber
+referencing==0.37.0
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
+regex==2026.9.29
+    # via transformers
+requests==2.34.2
+    # via
+    #   opentelemetry-exporter-http-transport
+    #   opentelemetry-exporter-otlp-proto-http
+    #   pooch
+    #   pyannoteai-sdk
+    #   streamlit
+rich==15.0.0
+    # via
+    #   pyannote-audio
+    #   typer
+rpds-py==2026.9.1
+    # via
+    #   jsonschema
+    #   referencing
+safetensors==0.8.0
+    # via
+    #   pyannote-audio
+    #   transformers
+scikit-learn==1.9.1
+    # via
+    #   librosa
+    #   pyannote-metrics
+    #   pytorch-metric-learning
+scipy==1.17.1
+    # via
+    #   librosa
+    #   noisereduce
+    #   pyannote-metrics
+    #   scikit-learn
+setuptools==84.0.0
+    # via torch
 shellingham==1.5.4
-six==1.16.0
+    # via typer
+six==1.17.0
+    # via python-dateutil
 sortedcontainers==2.4.0
-soundfile==0.12.1
-soxr==0.3.7
-speechbrain==1.0.2
-SQLAlchemy==2.0.31
-stack-data==0.6.3
-sympy==1.13.1
-tabulate==0.9.0
-tbb==2021.13.0
-tensorboardX==2.6.2.2
-threadpoolctl==3.5.0
-tiktoken==0.7.0
-transformers>=5.19  # default nemotron-3 diarizace (overeno 5.19.0, nativni nemotron3_diarization)
-torch-audiomentations==0.11.1
-torch-pitch-shift==1.2.4
-torchmetrics==1.4.0.post0
-tornado==6.4
-tqdm==4.66.4
-traitlets==5.14.3
-typer==0.12.3
-typing_extensions==4.12.2
-tzdata==2024.1
-urllib3==2.2.2
-wcwidth==0.2.13
-webrtcvad==2.0.10
-yarl==1.9.4
-omegaconf>=2.3.0
-gradio>=3.0.0
-nemo-toolkit[asr]
-rapidfuzz>=3.0.0  # Fix A: C-Levenshtein misto cisteho Python DP
-jiwer>=4.0  # FAZE 6: WER/CER/cpWER (overeno 4.0.0)
-streamlit>=1.39.0  # volitelne graficke rozhrani: streamlit run app.py
+    # via pyannote-core
+soundfile==0.14.0
+    # via
+    #   librosa
+    #   whisper-voice-transcriber
+soxr==1.1.0
+    # via librosa
+sqlalchemy==2.1.4
+    # via
+    #   alembic
+    #   optuna
+starlette==1.8.0
+    # via streamlit
+streamlit==1.66.0
+    # via whisper-voice-transcriber
+sympy==1.14.0
+    # via torch
+threadpoolctl==3.7.0
+    # via scikit-learn
+tokenizers==0.23.3
+    # via
+    #   faster-whisper
+    #   transformers
+    # via
+    #   asteroid-filterbanks
+    #   julius
+    #   lightning
+    #   pyannote-audio
+    #   pytorch-lightning
+    #   pytorch-metric-learning
+    #   torch-audiomentations
+    #   torch-pitch-shift
+    #   torchmetrics
+    #   whisper-voice-transcriber
+    # via
+    #   asteroid-filterbanks
+    #   julius
+    #   lightning
+    #   pyannote-audio
+    #   pytorch-lightning
+    #   pytorch-metric-learning
+    #   torch-audiomentations
+    #   torch-pitch-shift
+    #   torchmetrics
+    #   whisper-voice-transcriber
+torch-audiomentations==0.12.0
+    # via pyannote-audio
+torch-pitch-shift==1.2.5
+    # via torch-audiomentations
+    # via
+    #   pyannote-audio
+    #   torch-audiomentations
+    #   torch-pitch-shift
+    #   whisper-voice-transcriber
+    # via
+    #   pyannote-audio
+    #   torch-audiomentations
+    #   torch-pitch-shift
+    #   whisper-voice-transcriber
+torchcodec==0.17.0
+    # via pyannote-audio
+torchmetrics==1.9.0
+    # via
+    #   lightning
+    #   pyannote-audio
+    #   pytorch-lightning
+tqdm==4.70.1
+    # via
+    #   faster-whisper
+    #   huggingface-hub
+    #   lightning
+    #   noisereduce
+    #   optuna
+    #   pyannote-pipeline
+    #   pytorch-lightning
+    #   pytorch-metric-learning
+    #   transformers
+transformers==5.19.0
+    # via whisper-voice-transcriber
+    # via torch
+truststore==0.10.5 ; sys_platform != 'emscripten'
+    # via
+    #   httpcore2
+    #   httpx2
+typer==0.27.3
+    # via transformers
+typing-extensions==4.16.0
+    # via
+    #   aiohttp
+    #   aiosignal
+    #   alembic
+    #   altair
+    #   anyio
+    #   asteroid-filterbanks
+    #   grpcio
+    #   httpx2
+    #   huggingface-hub
+    #   librosa
+    #   lightning
+    #   lightning-utilities
+    #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+    #   pytorch-lightning
+    #   referencing
+    #   soundfile
+    #   sqlalchemy
+    #   starlette
+    #   streamlit
+    #   torch
+tzdata==2026.5 ; sys_platform == 'emscripten' or sys_platform == 'win32'
+    # via pandas
+urllib3==2.8.0
+    # via requests
+uvicorn==0.54.0
+    # via streamlit
+watchdog==6.0.0 ; sys_platform != 'darwin'
+    # via streamlit
+websockets==17.2
+    # via streamlit
+yarl==1.25.1
+    # via aiohttp

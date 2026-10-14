@@ -22,6 +22,11 @@ from unittest.mock import patch
 import pytest
 import torch
 
+# Načíst librosa audio stack (nativní soxr) PŘED patch.dict(sys.modules): patch.dict
+# po skončení zahodí moduly importované uvnitř bloku a opětovný import nanobind
+# rozšíření (soxr_ext) shodí celý interpret (Fatal Python error: Aborted).
+import librosa.core.audio  # noqa: F401
+
 
 def _install_nemo_stub(captured, fail_diarize=False):
     """Vytvoř hierarchii stub modulů nemo.collections.asr s fake diarizerem."""

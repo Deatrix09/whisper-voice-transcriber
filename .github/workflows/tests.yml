@@ -29,13 +29,21 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
-      - name: Install dependencies (CPU-only torch)
+      - name: Install dependencies (uv.lock versions, CPU-only torch)
         run: |
+          uv export --frozen --no-hashes --no-emit-project --extra test -o requirements-lock.txt
+          # CUDA torch stack from the lock is replaced by the CPU build of the same version.
+          grep -vE '^(torch==|torchaudio==|triton==|nvidia-)' requirements-lock.txt > requirements-ci.txt
           uv pip install --system "torch==2.8.0" "torchaudio==2.8.0" --index-url https://download.pytorch.org/whl/cpu
-          uv pip install --system -r pyproject.toml --extra test
+          uv pip install --system -r requirements-ci.txt
 
       - name: Compile check
         run: python -m compileall -q src algorithm main.py app.py
 
       - name: Run tests
-        run: python -m pytest tests/ -q
+        run: python -m pytest tests/ -q --deselect tests/test_faster_transcriber.py::test_real_tiny_smoke
+
+      # Real faster-whisper tiny model in its own process: after a real CTranslate2 run,
+      # a later librosa/soxr import in the same pytest process aborts (native lib clash).
+      - name: Smoke test (real tiny model)
+        run: python -m pytest tests/test_faster_transcriber.py::test_real_tiny_smoke -q

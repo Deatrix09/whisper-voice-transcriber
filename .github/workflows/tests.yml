@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+    branches: [Production]
+  pull_request:
+    branches: [Production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Install dependencies (CPU-only torch)
+        run: |
+          uv pip install --system "torch==2.8.0" "torchaudio==2.8.0" --index-url https://download.pytorch.org/whl/cpu
+          uv pip install --system -r pyproject.toml --extra test
+
+      - name: Compile check
+        run: python -m compileall -q src algorithm main.py app.py
+
+      - name: Run tests
+        run: python -m pytest tests/ -q

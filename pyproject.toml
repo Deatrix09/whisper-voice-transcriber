@@ -5,6 +5,18 @@ description = "Audio transcription with Whisper + speaker diarization (CLI)"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 license = { text = "Apache-2.0" }
+authors = [{ name = "Kleveta Lukas" }]
+keywords = ["speech-to-text", "transcription", "whisper", "faster-whisper", "speaker-diarization", "asr"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 # P0 0.2: kurátorované PŘÍMÉ závislosti (tranzitivní dořeší resolver).
 # Plný freeze pro pip je v requirements.txt (+ requirements-cuda/cpu.txt).
 # POZOR: pyannote.audio 4.x vyžaduje torchaudio>=2.8 (ověřeno resolverem),
@@ -28,6 +40,10 @@ dependencies = [
     "noisereduce==3.0.3",
     "omegaconf==2.3.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Deatrix09/whisper-voice-transcriber"
+Issues = "https://github.com/Deatrix09/whisper-voice-transcriber/issues"
 
 [project.optional-dependencies]
 test = ["pytest>=8"]

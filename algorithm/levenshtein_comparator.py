@@ -388,16 +388,18 @@ class LevenshteinComparator:
             # Calculate average similarity for each model
             avg_similarities = similarity_scores.mean()
             
-            # Find most similar and most different model pairs (excluding self-comparisons)
-            np.fill_diagonal(similarity_scores.values, -np.inf)  # Exclude diagonal (self-comparisons)
-            max_similarity = similarity_scores.max().max()
-            
-            np.fill_diagonal(similarity_scores.values, np.inf)  # Set diagonal to inf for finding min
-            min_similarity = similarity_scores.min().max()  # Find minimum similarity
-            
+            # Find most similar and most different model pairs (excluding self-comparisons).
+            # Writable copy: pandas 3 (Copy-on-Write) returns a read-only .values view.
+            scores = similarity_scores.to_numpy(dtype=float, copy=True)
+            np.fill_diagonal(scores, -np.inf)  # Exclude diagonal (self-comparisons)
+            max_similarity = scores.max()
+
+            np.fill_diagonal(scores, np.inf)  # Set diagonal to inf for finding min
+            min_similarity = scores.min(axis=0).max()  # Find minimum similarity
+
             # Get model pairs for max/min similarities
-            max_pair = np.where(results['similarity_scores'] == max_similarity)
-            min_pair = np.where(results['similarity_scores'] == min_similarity)
+            max_pair = np.where(scores == max_similarity)
+            min_pair = np.where(scores == min_similarity)
             
             # Create summary report
             summary = [

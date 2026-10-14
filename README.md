@@ -1,5 +1,8 @@
 # Voice Transcription with faster-whisper and Speaker Diarization
 
+[![tests](https://github.com/Deatrix09/whisper-voice-transcriber/actions/workflows/tests.yml/badge.svg?branch=Production)](https://github.com/Deatrix09/whisper-voice-transcriber/actions/workflows/tests.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 CLI app for transcribing audio files with [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 (CTranslate2, INT8) + speaker diarization (Nemotron-3 / pyannote / Sortformer / NeMo).
 Optimized for long recordings: streaming 30s chunks, Silero VAD pre-filter, lazy model loading.
@@ -185,6 +188,14 @@ Dockerfile.cuda / docker-compose.yml / pyproject.toml / uv.lock
 python -m pytest tests/ -q
 python -m compileall -q src algorithm
 ```
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first —
+all changes go through pull requests against the `Production` branch.
+This project follows a [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Found a security issue? Please report it privately, see [SECURITY.md](SECURITY.md).
 
 ## License
 

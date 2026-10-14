@@ -180,3 +180,6 @@ cython_debug/
 # P0 0.1: lokální secrets (nikdy necommitovat, viz .env.example)
 .env
 .env.local
+
+# Lokální worktrees nástrojů
+.dexone/

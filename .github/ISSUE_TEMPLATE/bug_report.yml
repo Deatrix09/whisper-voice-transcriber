@@ -1,0 +1,45 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Command you ran and the relevant part of your config.
+      placeholder: python main.py --input sample.mp3 --format txt
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: Relevant log lines. Remove any tokens or private content first.
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Python version, GPU/CUDA version (or CPU), install method (uv / pip / Docker)
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - ASR (faster-whisper / Parakeet)
+        - Diarization
+        - Audio processing
+        - Model comparison / evaluation
+        - Streamlit UI
+        - Docker / installation
+        - Other

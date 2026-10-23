@@ -301,7 +301,7 @@ pandas==3.0.6
     #   pyannote-metrics
     #   streamlit
     #   whisper-voice-transcriber
-pillow==12.3.0
+pillow==13.0.0
     # via
     #   matplotlib
     #   streamlit

@@ -416,7 +416,7 @@ scipy==1.17.1
     #   noisereduce
     #   pyannote-metrics
     #   scikit-learn
-setuptools==84.0.0
+setuptools==84.1.0
     # via torch
 shellingham==1.5.4
     # via typer

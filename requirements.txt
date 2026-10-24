@@ -73,7 +73,7 @@ einops==0.8.2
     # via pyannote-audio
 faster-whisper==1.2.1
     # via whisper-voice-transcriber
-filelock==4.1.1
+filelock==4.2.1
     # via
     #   huggingface-hub
     #   pyannote-pipeline

@@ -34,7 +34,7 @@ audioread==3.1.0
     # via librosa
 av==18.1.0
     # via faster-whisper
-certifi==2026.7.22
+certifi==2026.10.18
     # via requests
 cffi==2.1.1
     # via soundfile
